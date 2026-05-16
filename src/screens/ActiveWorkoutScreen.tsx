@@ -6,6 +6,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Radius, Spacing } from '../constants/theme';
+import { useColors } from '../hooks/useColors';
+import { useLang } from '../context/LanguageContext';
 import { saveWorkout } from '../db/database';
 
 interface Exercise {
@@ -37,7 +39,7 @@ function formatTime(seconds: number): string {
   return `${m}:${s}`;
 }
 
-function RestTimer({ seconds, onDone }: { seconds: number; onDone: () => void }) {
+function RestTimer({ seconds, onDone, restLabel, skipLabel }: { seconds: number; onDone: () => void; restLabel: string; skipLabel: string }) {
   const [remaining, setRemaining] = useState(seconds);
   const progress = useState(new Animated.Value(1))[0];
 
@@ -72,10 +74,10 @@ function RestTimer({ seconds, onDone }: { seconds: number; onDone: () => void })
   return (
     <View style={restStyles.container}>
       <View style={restStyles.header}>
-        <Text style={restStyles.label}>Rest</Text>
+        <Text style={restStyles.label}>{restLabel}</Text>
         <Text style={restStyles.time}>{formatTime(remaining)}</Text>
         <TouchableOpacity onPress={onDone} style={restStyles.skipBtn}>
-          <Text style={restStyles.skipText}>Skip</Text>
+          <Text style={restStyles.skipText}>{skipLabel}</Text>
         </TouchableOpacity>
       </View>
       <View style={restStyles.track}>
@@ -105,6 +107,9 @@ const restStyles = StyleSheet.create({
 });
 
 export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
+  const c = useColors();
+  const { t } = useLang();
+  const aw = t.active_workout;
   const [elapsed, setElapsed] = useState(0);
   const [completedSets, setCompletedSets] = useState<Record<string, number>>({});
   const [resting, setResting] = useState<string | null>(null);
@@ -163,11 +168,11 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
   const handleFinish = () => {
     if (totalDone < TOTAL_SETS) {
       Alert.alert(
-        'Finish early?',
-        `You've completed ${totalDone} of ${TOTAL_SETS} sets. End workout?`,
+        aw.finish_early_title,
+        aw.finish_early_msg(totalDone, TOTAL_SETS),
         [
-          { text: 'Keep going', style: 'cancel' },
-          { text: 'Finish', style: 'destructive', onPress: persistAndFinish },
+          { text: aw.keep_going, style: 'cancel' },
+          { text: aw.finish, style: 'destructive', onPress: persistAndFinish },
         ]
       );
     } else {
@@ -176,18 +181,18 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: c.bg }]}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn} hitSlop={8}>
           <Ionicons name="chevron-down" size={24} color={Colors.n600} />
         </TouchableOpacity>
         <View style={styles.timerBox}>
-          <Text style={styles.timerText}>{formatTime(elapsed)}</Text>
-          <Text style={styles.timerLabel}>ELAPSED</Text>
+          <Text style={[styles.timerText, { color: c.text }]}>{formatTime(elapsed)}</Text>
+          <Text style={[styles.timerLabel, { color: c.text3 }]}>{aw.elapsed}</Text>
         </View>
-        <TouchableOpacity onPress={handleFinish} style={styles.finishBtn}>
-          <Text style={styles.finishBtnText}>Finish</Text>
+        <TouchableOpacity onPress={handleFinish} style={[styles.finishBtn, { backgroundColor: c.surface2 }]}>
+          <Text style={[styles.finishBtnText, { color: c.text }]}>{aw.finish}</Text>
         </TouchableOpacity>
       </View>
 
@@ -195,7 +200,7 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
       <View style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` as any }]} />
       </View>
-      <Text style={styles.progressLabel}>{totalDone} / {TOTAL_SETS} sets</Text>
+      <Text style={[styles.progressLabel, { color: c.text3 }]}>{aw.sets(totalDone, TOTAL_SETS)}</Text>
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
         {EXERCISES.map((exercise, index) => {
@@ -209,16 +214,17 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
               key={exercise.name}
               style={[
                 styles.exerciseCard,
+                { backgroundColor: c.surface },
                 isCurrent && styles.exerciseCardActive,
                 isComplete && styles.exerciseCardDone,
               ]}
             >
               <View style={styles.exerciseTop}>
                 <View style={styles.exerciseInfo}>
-                  <Text style={[styles.exerciseName, isComplete && styles.textDone]}>
+                  <Text style={[styles.exerciseName, { color: c.text }, isComplete && styles.textDone]}>
                     {exercise.name}
                   </Text>
-                  <Text style={styles.exerciseMeta}>
+                  <Text style={[styles.exerciseMeta, { color: c.text3 }]}>
                     {exercise.sets} × {exercise.reps} · {exercise.weight}
                   </Text>
                 </View>
@@ -234,7 +240,7 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
               {/* Set dots */}
               <View style={styles.dotsRow}>
                 {Array.from({ length: exercise.sets }).map((_, si) => (
-                  <View key={si} style={[styles.setDot, si < done && styles.setDotDone]} />
+                  <View key={si} style={[styles.setDot, { backgroundColor: c.surface2 }, si < done && styles.setDotDone]} />
                 ))}
               </View>
 
@@ -243,6 +249,8 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
                 <RestTimer
                   seconds={DEFAULT_REST}
                   onDone={() => setResting(null)}
+                  restLabel={aw.rest}
+                  skipLabel={aw.skip_rest}
                 />
               )}
 
@@ -251,27 +259,20 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
                 <View style={styles.activeControls}>
                   <View style={styles.feedbackRow}>
                     <TouchableOpacity
-                      style={[
-                        styles.feedbackBtn,
-                        feedbacks[exercise.name] === 'easy' && styles.feedbackBtnSelected,
-                      ]}
+                      style={[styles.feedbackBtn, feedbacks[exercise.name] === 'easy' && styles.feedbackBtnSelected]}
                       onPress={() => handleFeedback(exercise.name, 'easy')}
                     >
-                      <Text style={styles.feedbackBtnText}>Too easy</Text>
+                      <Text style={styles.feedbackBtnText}>{aw.too_easy}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[
-                        styles.feedbackBtn,
-                        styles.feedbackBtnHard,
-                        feedbacks[exercise.name] === 'hard' && styles.feedbackBtnHardSelected,
-                      ]}
+                      style={[styles.feedbackBtn, styles.feedbackBtnHard, feedbacks[exercise.name] === 'hard' && styles.feedbackBtnHardSelected]}
                       onPress={() => handleFeedback(exercise.name, 'hard')}
                     >
-                      <Text style={[styles.feedbackBtnText, styles.feedbackBtnTextHard]}>Too hard</Text>
+                      <Text style={[styles.feedbackBtnText, styles.feedbackBtnTextHard]}>{aw.too_hard}</Text>
                     </TouchableOpacity>
                   </View>
                   <TouchableOpacity style={styles.setDoneBtn} onPress={() => markSet(exercise)}>
-                    <Text style={styles.setDoneBtnText}>Set {done + 1} done</Text>
+                    <Text style={styles.setDoneBtnText}>{aw.set_done(done + 1)}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -280,7 +281,7 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
         })}
 
         <TouchableOpacity style={styles.finishFullBtn} onPress={handleFinish}>
-          <Text style={styles.finishFullBtnText}>Complete workout</Text>
+          <Text style={styles.finishFullBtnText}>{aw.complete}</Text>
         </TouchableOpacity>
 
         <View style={{ height: 32 }} />

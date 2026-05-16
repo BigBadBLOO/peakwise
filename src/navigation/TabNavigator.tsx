@@ -6,37 +6,45 @@ import WorkoutScreen from '../screens/WorkoutScreen';
 import ProgressScreen from '../screens/ProgressScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { Colors } from '../constants/theme';
+import { useColors } from '../hooks/useColors';
+import { useLang } from '../context/LanguageContext';
 
 const Tab = createBottomTabNavigator();
-
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
-const TABS: { name: string; label: string; icon: IoniconName; iconFocused: IoniconName; component: React.ComponentType }[] = [
-  { name: 'Home', label: 'Home', icon: 'home-outline', iconFocused: 'home', component: HomeScreen },
-  { name: 'Workout', label: 'Workout', icon: 'barbell-outline', iconFocused: 'barbell', component: WorkoutScreen },
-  { name: 'Progress', label: 'Progress', icon: 'bar-chart-outline', iconFocused: 'bar-chart', component: ProgressScreen },
-  { name: 'Profile', label: 'Profile', icon: 'person-outline', iconFocused: 'person', component: ProfileScreen },
-];
+const TAB_ICONS: Record<string, { icon: IoniconName; iconFocused: IoniconName; component: React.ComponentType }> = {
+  Home:     { icon: 'home-outline',      iconFocused: 'home',      component: HomeScreen },
+  Workout:  { icon: 'barbell-outline',   iconFocused: 'barbell',   component: WorkoutScreen },
+  Progress: { icon: 'bar-chart-outline', iconFocused: 'bar-chart', component: ProgressScreen },
+  Profile:  { icon: 'person-outline',    iconFocused: 'person',    component: ProfileScreen },
+};
 
 export default function TabNavigator() {
+  const c = useColors();
+  const { t } = useLang();
+
+  const TABS = [
+    { name: 'Home',     label: t.tabs.home,     ...TAB_ICONS['Home'] },
+    { name: 'Workout',  label: t.tabs.workout,  ...TAB_ICONS['Workout'] },
+    { name: 'Progress', label: t.tabs.progress, ...TAB_ICONS['Progress'] },
+    { name: 'Profile',  label: t.tabs.profile,  ...TAB_ICONS['Profile'] },
+  ];
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: Colors.green,
-        tabBarInactiveTintColor: Colors.n400,
+        tabBarInactiveTintColor: c.text3,
         tabBarStyle: {
-          backgroundColor: '#fff',
-          borderTopColor: Colors.n200,
+          backgroundColor: c.surface,
+          borderTopColor: c.border,
           borderTopWidth: 1,
           paddingBottom: 4,
           height: 60,
         },
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '600',
-        },
-        tabBarIcon: ({ focused, color, size }) => {
+        tabBarLabelStyle: { fontSize: 10, fontWeight: '600' },
+        tabBarIcon: ({ focused, color }) => {
           const tab = TABS.find(t => t.name === route.name);
           const iconName = focused ? tab?.iconFocused : tab?.icon;
           return <Ionicons name={iconName as IoniconName} size={24} color={color} />;
