@@ -1,72 +1,189 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Checkin, PlanDay, getProfileValue, setProfileValue, getCheckinByDate } from '../db/database';
+import * as FileSystem from 'expo-file-system/legacy';
+import { initLlama, LlamaContext } from 'llama.rn';
 import {
-  RecommendationType,
-  getRecommendationType,
-  getIntensityPercent,
-} from '../engine/aiRecommendation';
+  Checkin,
+  PlanDay,
+  getProfileValue,
+  setProfileValue,
+  getCheckinByDate,
+} from '../db/database';
+import { useLang } from '../context/LanguageContext';
+import {
+  AIRecommendation,
+  SYSTEM_PROMPT,
+  buildUserMessage,
+  parseAIResponse,
+} from '../engine/aiPrompt';
+import { getRecommendationType, getIntensityPercent } from '../engine/aiRecommendation';
+
+export type ModuleStatus =
+  | 'idle'
+  | 'downloading'
+  | 'loading_model'
+  | 'ready'
+  | 'inferring'
+  | 'error';
 
 export interface AIModuleState {
-  isDownloaded: boolean;
-  isDownloading: boolean;
+  status: ModuleStatus;
   progress: number;
   download: () => void;
-  recommendationType: RecommendationType | null;
+  recommendation: AIRecommendation | null;
   intensityPercent: number;
+  errorMessage: string | null;
+  isDownloaded: boolean;
+  isDownloading: boolean;
+}
+
+const MODEL_URL =
+  'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf';
+const MODEL_FILENAME = 'peakwise_ai_model.gguf';
+
+function getModelUri(): string {
+  return (FileSystem.documentDirectory ?? '') + MODEL_FILENAME;
+}
+
+// Module-level singleton — survives re-renders and navigation
+let sharedContext: LlamaContext | null = null;
+
+async function loadModel(
+  onStatus: (s: ModuleStatus) => void,
+): Promise<LlamaContext> {
+  if (sharedContext) return sharedContext;
+  onStatus('loading_model');
+  const modelUri = getModelUri();
+  sharedContext = await initLlama(
+    {
+      model: modelUri,
+      n_ctx: 512,
+      n_threads: 4,
+      n_gpu_layers: 0,
+    },
+    () => {},
+  );
+  return sharedContext;
 }
 
 export function useAIModule(todayPlan: PlanDay | null): AIModuleState {
-  const [isDownloaded, setIsDownloaded] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const { lang } = useLang();
+  const [status, setStatus] = useState<ModuleStatus>('idle');
   const [progress, setProgress] = useState(0);
+  const [recommendation, setRecommendation] = useState<AIRecommendation | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [checkin, setCheckin] = useState<Checkin | null>(null);
+  const downloadRef = useRef<FileSystem.DownloadResumable | null>(null);
 
-  useEffect(() => {
-    if (Platform.OS === 'web') return;
-    getProfileValue('ai_module_downloaded').then(val => {
-      if (val === '1') setIsDownloaded(true);
-    });
-  }, []);
-
+  // Load checkin on focus
   useFocusEffect(
     useCallback(() => {
       if (Platform.OS === 'web') return;
       const today = new Date().toISOString().split('T')[0];
       getCheckinByDate(today).then(c => setCheckin(c));
-    }, [])
+    }, []),
   );
 
+  // On mount: check if model was already downloaded
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    (async () => {
+      const flag = await getProfileValue('ai_module_downloaded').catch(() => null);
+      if (flag !== '1') return;
+      const info = await FileSystem.getInfoAsync(getModelUri());
+      if (!info.exists) {
+        // File gone (e.g. app reinstall) — reset flag
+        await setProfileValue('ai_module_downloaded', '0').catch(() => {});
+        return;
+      }
+      try {
+        const ctx = await loadModel(setStatus);
+        sharedContext = ctx;
+        setStatus('inferring');
+        await runInference(ctx);
+      } catch (e: unknown) {
+        setErrorMessage(e instanceof Error ? e.message : 'Model load failed');
+        setStatus('error');
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const runInference = useCallback(async (ctx: LlamaContext) => {
+    setStatus('inferring');
+    try {
+      const userMsg = buildUserMessage(checkin, todayPlan, lang);
+      const result = await ctx.completion({
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userMsg },
+        ],
+        n_predict: 200,
+        temperature: 0.1,
+        top_p: 0.9,
+        stop: ['<|im_end|>', '<|endoftext|>'],
+        jinja: true,
+      });
+      const parsed = parseAIResponse(result.text);
+      if (parsed) {
+        setRecommendation(parsed);
+      } else {
+        // Fallback: rules-based classification with empty text (card will use i18n recs)
+        const type = getRecommendationType(checkin, todayPlan);
+        setRecommendation({ intensity: type, title: '', explanation: '' });
+      }
+      setStatus('ready');
+    } catch (e: unknown) {
+      setErrorMessage(e instanceof Error ? e.message : 'Inference failed');
+      setStatus('error');
+    }
+  }, [checkin, todayPlan, lang]);
+
   const download = useCallback(() => {
-    if (isDownloading || isDownloaded) return;
-    setIsDownloading(true);
+    if (status !== 'idle' && status !== 'error') return;
+    setStatus('downloading');
     setProgress(0);
+    setErrorMessage(null);
 
-    let current = 0;
-    const interval = setInterval(() => {
-      current = Math.min(current + Math.random() * 10 + 2, 92);
-      setProgress(current);
-    }, 150);
+    const modelUri = getModelUri();
+    const resumable = FileSystem.createDownloadResumable(
+      MODEL_URL,
+      modelUri,
+      {},
+      ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+        if (totalBytesExpectedToWrite > 0) {
+          setProgress((totalBytesWritten / totalBytesExpectedToWrite) * 100);
+        }
+      },
+    );
+    downloadRef.current = resumable;
 
-    setTimeout(async () => {
-      clearInterval(interval);
-      setProgress(100);
-      await setProfileValue('ai_module_downloaded', '1').catch(() => {});
-      setIsDownloaded(true);
-      setIsDownloading(false);
-    }, 3000);
-  }, [isDownloading, isDownloaded]);
+    resumable.downloadAsync()
+      .then(async () => {
+        await setProfileValue('ai_module_downloaded', '1').catch(() => {});
+        const ctx = await loadModel(setStatus);
+        sharedContext = ctx;
+        await runInference(ctx);
+      })
+      .catch((e: unknown) => {
+        setErrorMessage(e instanceof Error ? e.message : 'Download failed');
+        setStatus('error');
+      });
+  }, [status, runInference]);
 
-  const recommendationType = useMemo<RecommendationType | null>(() => {
-    if (!isDownloaded) return null;
-    return getRecommendationType(checkin, todayPlan);
-  }, [isDownloaded, checkin, todayPlan]);
+  const intensityPercent = recommendation
+    ? getIntensityPercent(recommendation.intensity)
+    : 0;
 
-  const intensityPercent = useMemo(() => {
-    if (!recommendationType) return 0;
-    return getIntensityPercent(recommendationType);
-  }, [recommendationType]);
-
-  return { isDownloaded, isDownloading, progress, download, recommendationType, intensityPercent };
+  return {
+    status,
+    progress,
+    download,
+    recommendation,
+    intensityPercent,
+    errorMessage,
+    isDownloaded: status === 'ready' || status === 'inferring',
+    isDownloading: status === 'downloading',
+  };
 }
