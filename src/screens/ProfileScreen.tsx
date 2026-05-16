@@ -5,12 +5,14 @@ import { Colors, Radius, Spacing } from '../constants/theme';
 import { useColors } from '../hooks/useColors';
 import { useTheme } from '../context/ThemeContext';
 import { useLang } from '../context/LanguageContext';
+import { useUnits } from '../context/UnitsContext';
 import { Screen } from '../components/Themed';
 
 export default function ProfileScreen() {
   const c = useColors();
   const { isDark, mode, setMode } = useTheme();
   const { t, lang, setLang } = useLang();
+  const { unit, toggle: toggleUnit } = useUnits();
   const p = t.profile;
   const secs = p.sections;
 
@@ -30,6 +32,16 @@ export default function ProfileScreen() {
       title: secs.app.title,
       items: secs.app.items,
       controls: {
+        [secs.app.items[0]]: (
+          <TouchableOpacity
+            style={[styles.langToggle, { backgroundColor: c.surface2, borderColor: c.border }]}
+            onPress={() => { Haptics.selectionAsync(); toggleUnit(); }}
+          >
+            <Text style={[styles.langText, { color: unit === 'kg' ? Colors.green : c.text3 }]}>kg</Text>
+            <Text style={[styles.langDivider, { color: c.border }]}>/</Text>
+            <Text style={[styles.langText, { color: unit === 'lbs' ? Colors.green : c.text3 }]}>lbs</Text>
+          </TouchableOpacity>
+        ),
         [secs.app.items[1]]: (
           <Switch
             value={isDark}

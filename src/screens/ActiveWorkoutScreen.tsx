@@ -8,13 +8,14 @@ import * as Haptics from 'expo-haptics';
 import { Colors, Radius, Spacing } from '../constants/theme';
 import { useColors } from '../hooks/useColors';
 import { useLang } from '../context/LanguageContext';
+import { useUnits } from '../context/UnitsContext';
 import { saveWorkout } from '../db/database';
 
 interface Exercise {
   name: string;
   sets: number;
   reps: string;
-  weight: string;
+  weightKg: number;
 }
 
 interface Props {
@@ -23,11 +24,11 @@ interface Props {
 }
 
 const EXERCISES: Exercise[] = [
-  { name: 'Barbell Bench Press', sets: 4, reps: '6–8', weight: '72.5 kg' },
-  { name: 'Pull-ups (weighted)', sets: 4, reps: '8', weight: '+10 kg' },
-  { name: 'Seated DB Shoulder Press', sets: 3, reps: '10', weight: '22 kg' },
-  { name: 'Cable Rows', sets: 3, reps: '12', weight: '55 kg' },
-  { name: 'Tricep Pushdowns', sets: 3, reps: '15', weight: '30 kg' },
+  { name: 'Barbell Bench Press', sets: 4, reps: '6–8', weightKg: 72.5 },
+  { name: 'Pull-ups (weighted)', sets: 4, reps: '8', weightKg: 10 },
+  { name: 'Seated DB Shoulder Press', sets: 3, reps: '10', weightKg: 22 },
+  { name: 'Cable Rows', sets: 3, reps: '12', weightKg: 55 },
+  { name: 'Tricep Pushdowns', sets: 3, reps: '15', weightKg: 30 },
 ];
 
 const TOTAL_SETS = EXERCISES.reduce((acc, e) => acc + e.sets, 0);
@@ -110,6 +111,7 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
   const c = useColors();
   const { t } = useLang();
   const aw = t.active_workout;
+  const { format: formatWeight } = useUnits();
   const [elapsed, setElapsed] = useState(0);
   const [completedSets, setCompletedSets] = useState<Record<string, number>>({});
   const [resting, setResting] = useState<string | null>(null);
@@ -148,7 +150,7 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
         exercise_name: e.name,
         set_number: i + 1,
         reps: e.reps,
-        weight: e.weight,
+        weight: `${e.weightKg} kg`,
         feedback: feedbacks[e.name],
       }))
     );
@@ -225,7 +227,7 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
                     {exercise.name}
                   </Text>
                   <Text style={[styles.exerciseMeta, { color: c.text3 }]}>
-                    {exercise.sets} × {exercise.reps} · {exercise.weight}
+                    {exercise.sets} × {exercise.reps} · {formatWeight(exercise.weightKg)}
                   </Text>
                 </View>
                 {isComplete ? (

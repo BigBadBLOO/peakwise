@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import RootNavigator from './src/navigation/RootNavigator';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { LanguageProvider } from './src/context/LanguageContext';
+import { UnitsProvider } from './src/context/UnitsContext';
 import { Colors } from './src/constants/theme';
 
 const NAV_LIGHT = {
@@ -34,7 +35,9 @@ export default function App() {
   return (
     <ThemeProvider>
       <LanguageProvider>
-        <AppInner />
+        <UnitsProvider>
+          <AppInner />
+        </UnitsProvider>
       </LanguageProvider>
     </ThemeProvider>
   );

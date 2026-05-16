@@ -5,6 +5,7 @@ import { StackNavigationProp } from '@react-navigation/stack';
 import { Colors, Radius, Spacing } from '../constants/theme';
 import { useColors } from '../hooks/useColors';
 import { useLang } from '../context/LanguageContext';
+import { useUnits } from '../context/UnitsContext';
 import { Screen, Card } from '../components/Themed';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { ScrollView } from 'react-native';
@@ -15,6 +16,7 @@ export default function HomeScreen() {
   const navigation = useNavigation<Nav>();
   const c = useColors();
   const { t } = useLang();
+  const { format } = useUnits();
   const h = t.home;
 
   return (
@@ -49,16 +51,16 @@ export default function HomeScreen() {
           <Text style={[styles.cardSub, { color: c.text2 }]}>{h.ai_built}</Text>
 
           <View style={[styles.exerciseList, { backgroundColor: c.surface2 }]}>
-            {[
-              ['Barbell Bench Press', '4 × 6–8', '72.5 kg'],
-              ['Pull-ups (weighted)', '4 × 8', '+10 kg'],
-              ['Seated DB Shoulder Press', '3 × 10', '22 kg'],
-            ].map(([name, sets, weight]) => (
+            {([
+              ['Barbell Bench Press', '4 × 6–8', 72.5],
+              ['Pull-ups (weighted)', '4 × 8', 10],
+              ['Seated DB Shoulder Press', '3 × 10', 22],
+            ] as [string, string, number][]).map(([name, sets, weight]) => (
               <View key={name} style={styles.exerciseRow}>
                 <View style={styles.dot} />
                 <Text style={[styles.exerciseName, { color: c.text }]}>{name}</Text>
                 <Text style={[styles.exerciseSets, { color: c.text3 }]}>{sets}</Text>
-                <Text style={[styles.exerciseWeight, { color: c.text2 }]}>{weight}</Text>
+                <Text style={[styles.exerciseWeight, { color: c.text2 }]}>{format(weight)}</Text>
               </View>
             ))}
             <Text style={[styles.moreExercises, { color: c.text3 }]}>{h.more_exercises(2)}</Text>
