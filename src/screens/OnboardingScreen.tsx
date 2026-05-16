@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  SafeAreaView, Animated, Dimensions,
+  SafeAreaView, Animated, Dimensions, Platform,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { Colors, Radius, Spacing } from '../constants/theme';
 import { setProfileValue } from '../db/database';
@@ -46,10 +47,14 @@ export default function OnboardingScreen({ onDone }: Props) {
 
   const handleFinish = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await setProfileValue('goal', goal);
-    await setProfileValue('level', level);
-    await setProfileValue('days_per_week', String(days));
-    await setProfileValue('onboarded', 'true');
+    if (Platform.OS === 'web') {
+      await AsyncStorage.setItem('onboarded', 'true').catch(() => {});
+    } else {
+      await setProfileValue('goal', goal).catch(() => {});
+      await setProfileValue('level', level).catch(() => {});
+      await setProfileValue('days_per_week', String(days)).catch(() => {});
+      await setProfileValue('onboarded', 'true').catch(() => {});
+    }
     onDone();
   };
 

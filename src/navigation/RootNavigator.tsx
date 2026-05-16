@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import TabNavigator from './TabNavigator';
@@ -9,6 +9,8 @@ import OnboardingScreen from '../screens/OnboardingScreen';
 import { Colors } from '../constants/theme';
 import { getCheckinByDate, saveCheckin } from '../db/database';
 import { getProfileValue } from '../db/database';
+
+const IS_WEB = Platform.OS === 'web';
 
 export type RootStackParamList = {
   Tabs: undefined;
@@ -28,6 +30,19 @@ export default function RootNavigator() {
 
   useEffect(() => {
     async function init() {
+      if (IS_WEB) {
+        // SQLite not available on web — use AsyncStorage fallback
+        const val = await AsyncStorage.getItem('onboarded').catch(() => null);
+        const isOnboarded = val === 'true';
+        setOnboarded(isOnboarded);
+        if (isOnboarded) {
+          const lastCheckin = await AsyncStorage.getItem('last_checkin').catch(() => null);
+          setShowCheckin(lastCheckin !== todayString());
+        }
+        setLoading(false);
+        return;
+      }
+
       const profileOnboarded = await getProfileValue('onboarded').catch(() => null);
       const isOnboarded = profileOnboarded === 'true';
       setOnboarded(isOnboarded);
@@ -75,7 +90,11 @@ export default function RootNavigator() {
         onDone={async (answers) => {
           const [sleep, energy, soreness, mood] = answers;
           const readiness = Math.round((sleep + energy + soreness + mood) / 4 * 20);
-          await saveCheckin({ date: todayString(), sleep, energy, soreness, mood, readiness });
+          if (IS_WEB) {
+            await AsyncStorage.setItem('last_checkin', todayString()).catch(() => {});
+          } else {
+            await saveCheckin({ date: todayString(), sleep, energy, soreness, mood, readiness }).catch(() => {});
+          }
           setShowCheckin(false);
         }}
         onSkip={() => setShowCheckin(false)}
