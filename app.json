@@ -1,25 +1,27 @@
 {
   "expo": {
-    "name": "peakwise-init",
-    "slug": "peakwise-init",
+    "name": "Peakwise",
+    "slug": "peakwise",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0EBE6F"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.peakwise.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0EBE6F"
       },
+      "package": "com.peakwise.app",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
