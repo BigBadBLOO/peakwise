@@ -31,6 +31,28 @@ export const Colors = {
   d_text3: '#6E7785',
 };
 
+export const DarkColors = {
+  bg: '#0E1117',
+  surface: '#161A23',
+  surface2: '#1E2330',
+  border: '#262C3B',
+  text: '#F1F3F6',
+  text2: '#AFB6C2',
+  text3: '#6E7785',
+};
+
+export function themed(isDark: boolean) {
+  return {
+    bg: isDark ? DarkColors.bg : Colors.n50,
+    surface: isDark ? DarkColors.surface : Colors.n0,
+    surface2: isDark ? DarkColors.surface2 : Colors.n100,
+    border: isDark ? DarkColors.border : Colors.n200,
+    text: isDark ? DarkColors.text : Colors.n900,
+    text2: isDark ? DarkColors.text2 : Colors.n500,
+    text3: isDark ? DarkColors.text3 : Colors.n400,
+  };
+}
+
 export const Radius = {
   sm: 8,
   md: 16,

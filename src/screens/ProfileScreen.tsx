@@ -1,7 +1,9 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { Colors, Radius, Spacing } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
 
 const SECTIONS = [
   {
@@ -19,6 +21,15 @@ const SECTIONS = [
 ];
 
 export default function ProfileScreen() {
+  const { isDark, mode, setMode } = useTheme();
+
+  const toggleDark = () => {
+    Haptics.selectionAsync();
+    if (mode === 'system') setMode('dark');
+    else if (mode === 'dark') setMode('light');
+    else setMode('dark');
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -55,15 +66,29 @@ export default function ProfileScreen() {
           <View key={sec.title} style={styles.section}>
             <Text style={styles.sectionTitle}>{sec.title}</Text>
             <View style={styles.sectionCard}>
-              {sec.items.map((item, i) => (
-                <TouchableOpacity key={item} style={[
-                  styles.settingRow,
-                  i < sec.items.length - 1 && styles.settingBorder,
-                ]}>
-                  <Text style={styles.settingText}>{item}</Text>
-                  <Text style={styles.chevron}>›</Text>
-                </TouchableOpacity>
-              ))}
+              {sec.items.map((item, i) => {
+                const isDarkToggle = item === 'Dark mode';
+                return (
+                  <TouchableOpacity
+                    key={item}
+                    style={[styles.settingRow, i < sec.items.length - 1 && styles.settingBorder]}
+                    onPress={isDarkToggle ? toggleDark : undefined}
+                    activeOpacity={isDarkToggle ? 0.7 : 1}
+                  >
+                    <Text style={styles.settingText}>{item}</Text>
+                    {isDarkToggle ? (
+                      <Switch
+                        value={isDark}
+                        onValueChange={toggleDark}
+                        trackColor={{ false: Colors.n200, true: Colors.green }}
+                        thumbColor="#fff"
+                      />
+                    ) : (
+                      <Text style={styles.chevron}>›</Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
         ))}

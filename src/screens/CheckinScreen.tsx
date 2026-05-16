@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity,
   Modal, Pressable, Animated, ScrollView,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Colors, Radius, Spacing } from '../constants/theme';
 
 interface Props {
@@ -26,7 +27,7 @@ function DotRating({
       {[1, 2, 3, 4, 5].map(n => (
         <TouchableOpacity
           key={n}
-          onPress={() => onChange(n)}
+          onPress={() => { onChange(n); Haptics.selectionAsync(); }}
           style={[styles.ratingBtn, n <= value && styles.ratingBtnActive]}
           activeOpacity={0.7}
         >
@@ -49,6 +50,7 @@ export default function CheckinScreen({ visible, onDone, onSkip }: Props) {
   };
 
   const handleDone = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onDone(answers);
     setAnswers([0, 0, 0, 0]);
   };

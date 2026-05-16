@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, SafeAreaView, Alert,
+  ScrollView, SafeAreaView, Alert, Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { Colors, Radius, Spacing } from '../constants/theme';
+import { saveWorkout } from '../db/database';
 
 interface Exercise {
   name: string;
@@ -27,6 +29,7 @@ const EXERCISES: Exercise[] = [
 ];
 
 const TOTAL_SETS = EXERCISES.reduce((acc, e) => acc + e.sets, 0);
+const DEFAULT_REST = 90;
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -34,14 +37,83 @@ function formatTime(seconds: number): string {
   return `${m}:${s}`;
 }
 
+function RestTimer({ seconds, onDone }: { seconds: number; onDone: () => void }) {
+  const [remaining, setRemaining] = useState(seconds);
+  const progress = useState(new Animated.Value(1))[0];
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: 0,
+      duration: seconds * 1000,
+      useNativeDriver: false,
+    }).start();
+
+    const interval = setInterval(() => {
+      setRemaining(r => {
+        if (r <= 1) {
+          clearInterval(interval);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          onDone();
+          return 0;
+        }
+        if (r === 11) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        return r - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const barColor = progress.interpolate({
+    inputRange: [0, 0.3, 1],
+    outputRange: [Colors.rest, Colors.light, Colors.green],
+  });
+
+  return (
+    <View style={restStyles.container}>
+      <View style={restStyles.header}>
+        <Text style={restStyles.label}>Rest</Text>
+        <Text style={restStyles.time}>{formatTime(remaining)}</Text>
+        <TouchableOpacity onPress={onDone} style={restStyles.skipBtn}>
+          <Text style={restStyles.skipText}>Skip</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={restStyles.track}>
+        <Animated.View style={[restStyles.fill, { width: progress.interpolate({
+          inputRange: [0, 1],
+          outputRange: ['0%', '100%'],
+        }) as any, backgroundColor: barColor }]} />
+      </View>
+    </View>
+  );
+}
+
+const restStyles = StyleSheet.create({
+  container: {
+    backgroundColor: Colors.n50,
+    borderRadius: Radius.sm,
+    padding: 12,
+    marginTop: 10,
+  },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  label: { fontSize: 12, fontWeight: '600', color: Colors.n400, flex: 1 },
+  time: { fontSize: 20, fontWeight: '700', color: Colors.n900, letterSpacing: -0.5, fontVariant: ['tabular-nums'] },
+  skipBtn: { flex: 1, alignItems: 'flex-end' },
+  skipText: { fontSize: 13, color: Colors.green, fontWeight: '600' },
+  track: { height: 4, backgroundColor: Colors.n200, borderRadius: 2, overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: 2 },
+});
+
 export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [completedSets, setCompletedSets] = useState<Record<string, number>>({});
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [resting, setResting] = useState<string | null>(null);
+  const [feedbacks, setFeedbacks] = useState<Record<string, string>>({});
+  const startTime = useRef(Date.now());
 
   useEffect(() => {
-    intervalRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+    const interval = setInterval(() => setElapsed(s => s + 1), 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const totalDone = Object.values(completedSets).reduce((a, b) => a + b, 0);
@@ -54,12 +126,38 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
   const markSet = useCallback((exercise: Exercise) => {
     const done = completedSets[exercise.name] ?? 0;
     if (done >= exercise.sets) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setCompletedSets(prev => ({ ...prev, [exercise.name]: done + 1 }));
+    const isLastSet = done + 1 >= exercise.sets;
+    if (!isLastSet) setResting(exercise.name);
   }, [completedSets]);
 
-  const handleFeedback = (type: 'easy' | 'hard') => {
-    const label = type === 'easy' ? 'Too Easy noted' : 'Too Hard noted';
-    Alert.alert(label, 'Your next session will be adjusted automatically.');
+  const handleFeedback = (exerciseName: string, type: 'easy' | 'hard') => {
+    Haptics.selectionAsync();
+    setFeedbacks(prev => ({ ...prev, [exerciseName]: type }));
+  };
+
+  const persistAndFinish = async () => {
+    const sets = EXERCISES.flatMap(e =>
+      Array.from({ length: completedSets[e.name] ?? 0 }, (_, i) => ({
+        exercise_name: e.name,
+        set_number: i + 1,
+        reps: e.reps,
+        weight: e.weight,
+        feedback: feedbacks[e.name],
+      }))
+    );
+    await saveWorkout(
+      {
+        date: new Date().toISOString().split('T')[0],
+        name: 'Upper Body · Heavy',
+        duration_seconds: Math.floor((Date.now() - startTime.current) / 1000),
+        completed: totalDone === TOTAL_SETS ? 1 : 0,
+      },
+      sets
+    ).catch(() => {});
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    onFinish();
   };
 
   const handleFinish = () => {
@@ -69,11 +167,11 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
         `You've completed ${totalDone} of ${TOTAL_SETS} sets. End workout?`,
         [
           { text: 'Keep going', style: 'cancel' },
-          { text: 'Finish', style: 'destructive', onPress: onFinish },
+          { text: 'Finish', style: 'destructive', onPress: persistAndFinish },
         ]
       );
     } else {
-      onFinish();
+      persistAndFinish();
     }
   };
 
@@ -104,6 +202,7 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
           const done = completedSets[exercise.name] ?? 0;
           const isComplete = done >= exercise.sets;
           const isCurrent = index === currentExerciseIndex;
+          const isResting = resting === exercise.name;
 
           return (
             <View
@@ -135,25 +234,38 @@ export default function ActiveWorkoutScreen({ onFinish, onBack }: Props) {
               {/* Set dots */}
               <View style={styles.dotsRow}>
                 {Array.from({ length: exercise.sets }).map((_, si) => (
-                  <View
-                    key={si}
-                    style={[styles.setDot, si < done && styles.setDotDone]}
-                  />
+                  <View key={si} style={[styles.setDot, si < done && styles.setDotDone]} />
                 ))}
               </View>
 
-              {isCurrent && !isComplete && (
+              {/* Rest timer */}
+              {isResting && (
+                <RestTimer
+                  seconds={DEFAULT_REST}
+                  onDone={() => setResting(null)}
+                />
+              )}
+
+              {/* Active controls (shown when current and not resting) */}
+              {isCurrent && !isComplete && !isResting && (
                 <View style={styles.activeControls}>
                   <View style={styles.feedbackRow}>
                     <TouchableOpacity
-                      style={styles.feedbackBtn}
-                      onPress={() => handleFeedback('easy')}
+                      style={[
+                        styles.feedbackBtn,
+                        feedbacks[exercise.name] === 'easy' && styles.feedbackBtnSelected,
+                      ]}
+                      onPress={() => handleFeedback(exercise.name, 'easy')}
                     >
                       <Text style={styles.feedbackBtnText}>Too easy</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.feedbackBtn, styles.feedbackBtnHard]}
-                      onPress={() => handleFeedback('hard')}
+                      style={[
+                        styles.feedbackBtn,
+                        styles.feedbackBtnHard,
+                        feedbacks[exercise.name] === 'hard' && styles.feedbackBtnHardSelected,
+                      ]}
+                      onPress={() => handleFeedback(exercise.name, 'hard')}
                     >
                       <Text style={[styles.feedbackBtnText, styles.feedbackBtnTextHard]}>Too hard</Text>
                     </TouchableOpacity>
@@ -204,18 +316,10 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     overflow: 'hidden',
   },
-  progressFill: {
-    height: '100%',
-    backgroundColor: Colors.green,
-    borderRadius: 2,
-  },
+  progressFill: { height: '100%', backgroundColor: Colors.green, borderRadius: 2 },
   progressLabel: {
-    fontSize: 11,
-    color: Colors.n400,
-    fontWeight: '600',
-    marginHorizontal: Spacing.md,
-    marginTop: 6,
-    marginBottom: 8,
+    fontSize: 11, color: Colors.n400, fontWeight: '600',
+    marginHorizontal: Spacing.md, marginTop: 6, marginBottom: 8,
   },
   scroll: { flex: 1 },
   exerciseCard: {
@@ -238,63 +342,45 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 3,
   },
-  exerciseCardDone: { opacity: 0.6 },
+  exerciseCardDone: { opacity: 0.55 },
   exerciseTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   exerciseInfo: { flex: 1, marginRight: 12 },
   exerciseName: { fontSize: 15, fontWeight: '600', color: Colors.n900 },
   textDone: { textDecorationLine: 'line-through', color: Colors.n400 },
   exerciseMeta: { fontSize: 12, color: Colors.n400, marginTop: 2 },
   doneCheck: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 28, height: 28, borderRadius: 14,
     backgroundColor: Colors.green,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
   setCounter: { fontSize: 18, fontWeight: '700', color: Colors.n500 },
   dotsRow: { flexDirection: 'row', gap: 6, marginTop: 10 },
-  setDot: {
-    flex: 1,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.n200,
-  },
+  setDot: { flex: 1, height: 6, borderRadius: 3, backgroundColor: Colors.n200 },
   setDotDone: { backgroundColor: Colors.green },
   activeControls: { marginTop: 14, gap: 10 },
   feedbackRow: { flexDirection: 'row', gap: 8 },
   feedbackBtn: {
-    flex: 1,
-    height: 36,
-    borderRadius: Radius.full,
+    flex: 1, height: 36, borderRadius: Radius.full,
     backgroundColor: Colors.greenSoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
+  feedbackBtnSelected: { backgroundColor: Colors.green },
   feedbackBtnHard: { backgroundColor: '#FEE8E9' },
+  feedbackBtnHardSelected: { backgroundColor: Colors.rest },
   feedbackBtnText: { fontSize: 13, fontWeight: '600', color: Colors.greenPressed },
   feedbackBtnTextHard: { color: Colors.rest },
   setDoneBtn: {
-    backgroundColor: Colors.green,
-    borderRadius: Radius.full,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: Colors.green, borderRadius: Radius.full, height: 48,
+    alignItems: 'center', justifyContent: 'center',
     shadowColor: Colors.green,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.28,
-    shadowRadius: 10,
-    elevation: 4,
+    shadowOpacity: 0.28, shadowRadius: 10, elevation: 4,
   },
   setDoneBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   finishFullBtn: {
-    backgroundColor: Colors.navy,
-    borderRadius: Radius.full,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: Spacing.md,
-    marginTop: 8,
+    backgroundColor: Colors.navy, borderRadius: Radius.full, height: 52,
+    alignItems: 'center', justifyContent: 'center',
+    marginHorizontal: Spacing.md, marginTop: 8,
   },
   finishFullBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
