@@ -8,7 +8,6 @@ interface UnitsContextValue {
   setUnit: (u: Unit) => void;
   toggle: () => void;
   format: (kg: number) => string;
-  convert: (kg: number) => number;
 }
 
 const UnitsContext = createContext<UnitsContextValue>({
@@ -16,10 +15,7 @@ const UnitsContext = createContext<UnitsContextValue>({
   setUnit: () => {},
   toggle: () => {},
   format: (kg) => `${kg} kg`,
-  convert: (kg) => kg,
 });
-
-const KG_TO_LBS = 2.20462;
 
 export function UnitsProvider({ children }: { children: React.ReactNode }) {
   const [unit, setUnitState] = useState<Unit>('kg');
@@ -37,16 +33,12 @@ export function UnitsProvider({ children }: { children: React.ReactNode }) {
 
   const toggle = () => setUnit(unit === 'kg' ? 'lbs' : 'kg');
 
-  const convert = (kg: number) =>
-    unit === 'lbs' ? Math.round(kg * KG_TO_LBS * 10) / 10 : kg;
-
-  const format = (kg: number) => {
-    const val = convert(kg);
+  const format = (val: number) => {
     return `${val} ${unit}`;
   };
 
   return (
-    <UnitsContext.Provider value={{ unit, setUnit, toggle, format, convert }}>
+    <UnitsContext.Provider value={{ unit, setUnit, toggle, format }}>
       {children}
     </UnitsContext.Provider>
   );

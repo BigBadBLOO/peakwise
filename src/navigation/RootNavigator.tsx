@@ -2,13 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { View, ActivityIndicator, Platform } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useTokens } from '../hooks/useTokens';
 import TabNavigator from './TabNavigator';
-import ActiveWorkoutScreen from '../screens/ActiveWorkoutScreen';
-import CheckinScreen from '../screens/CheckinScreen';
-import OnboardingScreen from '../screens/OnboardingScreen';
-import { Colors } from '../constants/theme';
-import { getCheckinByDate, saveCheckin } from '../db/database';
-import { getProfileValue } from '../db/database';
+import ActiveWorkoutScreen from '../screens/active-workout';
+import CheckinScreen from '../screens/checkin';
+import OnboardingScreen from '../screens/onboarding';
+import { getCheckinByDate, saveCheckin, getProfileValue } from '../db/database';
 
 const IS_WEB = Platform.OS === 'web';
 
@@ -24,6 +23,7 @@ function todayString(): string {
 }
 
 export default function RootNavigator() {
+  const t = useTokens();
   const [loading, setLoading] = useState(true);
   const [onboarded, setOnboarded] = useState(false);
   const [showCheckin, setShowCheckin] = useState(false);
@@ -31,7 +31,6 @@ export default function RootNavigator() {
   useEffect(() => {
     async function init() {
       if (IS_WEB) {
-        // SQLite not available on web — use AsyncStorage fallback
         const val = await AsyncStorage.getItem('onboarded').catch(() => null);
         const isOnboarded = val === 'true';
         setOnboarded(isOnboarded);
@@ -59,18 +58,15 @@ export default function RootNavigator() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.n0 }}>
-        <ActivityIndicator color={Colors.green} size="large" />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: t.bgScreen }}>
+        <ActivityIndicator color={t.colorPrimary} size="large" />
       </View>
     );
   }
 
   if (!onboarded) {
     return (
-      <OnboardingScreen onDone={() => {
-        setOnboarded(true);
-        setShowCheckin(true);
-      }} />
+      <OnboardingScreen onDone={() => { setOnboarded(true); setShowCheckin(true); }} />
     );
   }
 

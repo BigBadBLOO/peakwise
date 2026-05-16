@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View } from 'react-native';
 import Svg, { Rect, Text as SvgText } from 'react-native-svg';
-import { Colors } from '../constants/theme';
+import { useTokens } from '../hooks/useTokens';
 
 interface Bar {
   label: string;
@@ -14,50 +14,44 @@ interface Props {
   height?: number;
   color?: string;
   activeColor?: string;
-  unit?: string;
 }
 
-export default function BarChart({
-  data,
-  height = 120,
-  color = Colors.n200,
-  activeColor = Colors.green,
-  unit = '',
-}: Props) {
+export default function BarChart({ data, height = 120, color, activeColor }: Props) {
+  const t = useTokens();
+
+  const barColor   = color       ?? t.bgSubtle;
+  const activeBarColor = activeColor ?? t.colorPrimary;
+
   const max = Math.max(...data.map(d => d.value), 1);
-  const barWidth = 22;
-  const gap = 10;
+  const barWidth   = 22;
+  const gap        = t.spacing.snug;
   const totalWidth = data.length * (barWidth + gap) - gap;
-  const svgHeight = height;
   const labelHeight = 18;
-  const chartHeight = svgHeight - labelHeight;
+  const chartHeight = height - labelHeight;
 
   return (
     <View>
-      <Svg width={totalWidth} height={svgHeight} style={{ overflow: 'visible' }}>
+      <Svg width={totalWidth} height={height} style={{ overflow: 'visible' }}>
         {data.map((bar, i) => {
-          const barH = Math.max((bar.value / max) * chartHeight, 4);
-          const x = i * (barWidth + gap);
-          const y = chartHeight - barH;
-          const fill = bar.active ? activeColor : color;
+          const barH = Math.max((bar.value / max) * chartHeight, t.radius.xs);
+          const x    = i * (barWidth + gap);
+          const y    = chartHeight - barH;
 
           return (
             <React.Fragment key={i}>
               <Rect
-                x={x}
-                y={y}
-                width={barWidth}
-                height={barH}
-                rx={6}
-                fill={fill}
+                x={x} y={y}
+                width={barWidth} height={barH}
+                rx={t.radius.sm}
+                fill={bar.active ? activeBarColor : barColor}
               />
               <SvgText
                 x={x + barWidth / 2}
-                y={svgHeight}
+                y={height}
                 textAnchor="middle"
-                fontSize={10}
-                fontWeight="600"
-                fill={Colors.n400}
+                fontSize={t.font.size.xs}
+                fontWeight={t.font.weight.semibold}
+                fill={t.textTertiary}
               >
                 {bar.label}
               </SvgText>
