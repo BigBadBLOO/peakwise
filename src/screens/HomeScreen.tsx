@@ -1,9 +1,15 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { Colors, Radius, Spacing } from '../constants/theme';
+import { RootStackParamList } from '../navigation/RootNavigator';
+
+type Nav = StackNavigationProp<RootStackParamList>;
 
 export default function HomeScreen() {
+  const navigation = useNavigation<Nav>();
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -56,7 +62,10 @@ export default function HomeScreen() {
             <Text style={styles.moreExercises}>+ 2 more exercises</Text>
           </View>
 
-          <TouchableOpacity style={styles.primaryBtn}>
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            onPress={() => navigation.navigate('ActiveWorkout')}
+          >
             <Text style={styles.primaryBtnText}>Start workout</Text>
           </TouchableOpacity>
         </View>
