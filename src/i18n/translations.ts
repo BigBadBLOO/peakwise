@@ -39,6 +39,22 @@ export const translations = {
       regenerate: 'Regenerate program',
       sessions: ['Upper Body · Heavy', 'Lower Body · Power', 'Rest', 'Push Day', 'Pull Day', 'Legs', 'Rest'],
       muscles: { chest: 'Chest', back: 'Back', legs: 'Legs', shoulders: 'Shoulders', arms: 'Arms' },
+      ai_module: {
+        overline: 'AI · RECOMMENDATION',
+        download_title: 'Personalized recommendations',
+        download_sub: 'Download the AI module to get daily intensity guidance based on your readiness score.',
+        download_btn: 'Download · ~2 MB',
+        downloading: 'Setting up AI module...',
+        intensity_label: 'Recommended intensity',
+        recs: {
+          full_send:     { title: 'Go all out today',          body: "You're fully recovered — push heavy on all main lifts." },
+          solid_session: { title: 'Solid session ahead',       body: 'Good energy. Stick to plan and push on the main lifts.' },
+          go_light:      { title: 'Consider going lighter',    body: 'Some fatigue detected. Back off volume 15–20%, focus on form.' },
+          swap_rest:     { title: 'Consider an extra rest day', body: 'High fatigue. If you train, keep it very light or do mobility only.' },
+          rest_day:      { title: 'Rest day — recover well',   body: 'Light walk, stretching, or mobility work is ideal today.' },
+          no_checkin:    { title: 'Complete your check-in',    body: 'Rate your morning readiness to get a personalized recommendation.' },
+        },
+      },
     },
 
     // ProgressScreen
@@ -175,6 +191,22 @@ export const translations = {
       regenerate: 'Обновить программу',
       sessions: ['Верх тела · Тяжёло', 'Низ тела · Сила', 'Отдых', 'Толкание', 'Тяга', 'Ноги', 'Отдых'],
       muscles: { chest: 'Грудь', back: 'Спина', legs: 'Ноги', shoulders: 'Плечи', arms: 'Руки' },
+      ai_module: {
+        overline: 'AI · РЕКОМЕНДАЦИЯ',
+        download_title: 'Персональные рекомендации',
+        download_sub: 'Загрузите AI-модуль для ежедневных советов по интенсивности на основе вашей готовности.',
+        download_btn: 'Загрузить · ~2 МБ',
+        downloading: 'Настраиваем AI-модуль...',
+        intensity_label: 'Рекомендуемая интенсивность',
+        recs: {
+          full_send:     { title: 'Выложитесь на полную',          body: 'Вы хорошо восстановились — работайте с максимальным весом на всех базовых.' },
+          solid_session: { title: 'Хорошая тренировка впереди',    body: 'Хорошая энергия. Держитесь плана, жмите на базовых.' },
+          go_light:      { title: 'Рассмотрите более лёгкую нагрузку', body: 'Есть признаки усталости. Снизьте объём на 15–20%, сосредоточьтесь на технике.' },
+          swap_rest:     { title: 'Рассмотрите дополнительный отдых', body: 'Высокая усталость. Если тренируетесь — только очень лёгкая нагрузка или мобилити.' },
+          rest_day:      { title: 'День отдыха — восстанавливайтесь', body: 'Лёгкая прогулка, растяжка или мобилити — идеально на сегодня.' },
+          no_checkin:    { title: 'Пройдите утренний чек-ин',     body: 'Оцените самочувствие утром, чтобы получить персональную рекомендацию.' },
+        },
+      },
     },
 
     progress: {
