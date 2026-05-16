@@ -100,6 +100,42 @@ export async function getWorkoutVolume(weeks = 7): Promise<{ week: string; volum
   );
 }
 
+// ─── Workout plan ───────────────────────────────────────────────────────────
+
+export interface PlanDay {
+  date: string;
+  session_type: string;
+  session_name: string;
+}
+
+export async function savePlanDays(days: PlanDay[]): Promise<void> {
+  const db = await getDb();
+  for (const day of days) {
+    await db.runAsync(
+      'INSERT OR REPLACE INTO workout_plan (date, session_type, session_name) VALUES (?, ?, ?)',
+      [day.date, day.session_type, day.session_name]
+    );
+  }
+}
+
+export async function getPlanForWeek(weekStart: string): Promise<PlanDay[]> {
+  const db = await getDb();
+  return db.getAllAsync<PlanDay>(
+    `SELECT date, session_type, session_name FROM workout_plan
+     WHERE date >= ? AND date <= date(?, '+6 days') ORDER BY date`,
+    [weekStart, weekStart]
+  );
+}
+
+export async function getTodayPlan(): Promise<PlanDay | null> {
+  const db = await getDb();
+  const today = new Date().toISOString().split('T')[0];
+  return db.getFirstAsync<PlanDay>(
+    'SELECT date, session_type, session_name FROM workout_plan WHERE date = ?',
+    [today]
+  );
+}
+
 // ─── User profile (key-value) ───────────────────────────────────────────────
 
 export async function setProfileValue(key: string, value: string): Promise<void> {

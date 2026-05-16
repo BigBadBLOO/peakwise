@@ -5,10 +5,12 @@ import { useLang } from '../../context/LanguageContext';
 import { Screen, Caption, Heading, SecondaryButton } from '../../components/Themed';
 import { WeekStrip } from './WeekStrip';
 import { SessionList } from './SessionList';
+import { useWeekData } from '../../hooks/useWeekData';
 
 export default function WorkoutScreen() {
   const t = useTokens();
   const { t: i18n } = useLang();
+  const { plan, completedDates, regenerate } = useWeekData();
 
   return (
     <Screen>
@@ -18,11 +20,11 @@ export default function WorkoutScreen() {
           <Heading style={{ marginTop: t.spacing.xxs }}>{i18n.workout.title}</Heading>
         </View>
 
-        <WeekStrip />
-        <SessionList />
+        <WeekStrip plan={plan} completedDates={completedDates} />
+        <SessionList plan={plan} completedDates={completedDates} />
 
         <View style={{ paddingHorizontal: t.spacing.md, marginTop: t.spacing.sm }}>
-          <SecondaryButton>{i18n.workout.regenerate}</SecondaryButton>
+          <SecondaryButton onPress={regenerate}>{i18n.workout.regenerate}</SecondaryButton>
         </View>
 
         <View style={{ height: t.spacing.xl }} />

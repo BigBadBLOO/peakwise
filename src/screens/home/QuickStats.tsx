@@ -4,15 +4,19 @@ import { useTokens } from '../../hooks/useTokens';
 import { useLang } from '../../context/LanguageContext';
 import { Caption } from '../../components/Themed';
 
-export function QuickStats() {
+interface Props {
+  streak: number;
+}
+
+export function QuickStats({ streak }: Props) {
   const t = useTokens();
   const { t: i18n } = useLang();
   const h = i18n.home;
 
   const stats: [string, string][] = [
-    [h.streak, '12d'],
-    [h.sleep,  '7.4h'],
-    [h.hrv,    '64ms'],
+    [h.streak, streak > 0 ? `${streak}d` : '—'],
+    [h.sleep,  '—'],
+    [h.hrv,    '—'],
   ];
 
   return (

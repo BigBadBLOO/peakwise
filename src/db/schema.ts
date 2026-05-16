@@ -31,4 +31,11 @@ export const CREATE_TABLES = `
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS workout_plan (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL UNIQUE,
+    session_type TEXT NOT NULL,
+    session_name TEXT NOT NULL
+  );
 `;

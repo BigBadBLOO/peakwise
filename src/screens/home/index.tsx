@@ -6,6 +6,7 @@ import { useTokens } from '../../hooks/useTokens';
 import { useLang } from '../../context/LanguageContext';
 import { Screen, Caption } from '../../components/Themed';
 import { RootStackParamList } from '../../navigation/RootNavigator';
+import { useHomeData } from '../../hooks/useHomeData';
 import { ReadinessCard } from './ReadinessCard';
 import { WorkoutCard } from './WorkoutCard';
 import { QuickStats } from './QuickStats';
@@ -16,6 +17,7 @@ export default function HomeScreen() {
   const navigation = useNavigation<Nav>();
   const t = useTokens();
   const { t: i18n } = useLang();
+  const { checkin, streak, todayPlan } = useHomeData();
 
   return (
     <Screen>
@@ -27,9 +29,9 @@ export default function HomeScreen() {
           </Text>
         </View>
 
-        <ReadinessCard />
-        <WorkoutCard onStart={() => navigation.navigate('ActiveWorkout')} />
-        <QuickStats />
+        <ReadinessCard checkin={checkin} />
+        <WorkoutCard plan={todayPlan} onStart={() => navigation.navigate('ActiveWorkout')} />
+        <QuickStats streak={streak} />
 
         <View style={{ height: t.spacing.xl }} />
       </ScrollView>
