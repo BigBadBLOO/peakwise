@@ -50,6 +50,7 @@ export const translations = {
         intensity_label: 'Recommended intensity',
         error_generic: 'Something went wrong. Please try again.',
         retry: 'Retry',
+        requires_build: 'AI recommendations require a native dev build (expo run:android / expo run:ios). Not available in Expo Go.',
         recs: {
           full_send:     { title: 'Go all out today',           body: "You're fully recovered — push heavy on all main lifts." },
           solid_session: { title: 'Solid session ahead',        body: 'Good energy. Stick to plan and push on the main lifts.' },
@@ -206,6 +207,7 @@ export const translations = {
         intensity_label: 'Рекомендуемая интенсивность',
         error_generic: 'Что-то пошло не так. Попробуйте снова.',
         retry: 'Повторить',
+        requires_build: 'AI-рекомендации требуют нативной сборки (expo run:android / expo run:ios). Недоступно в Expo Go.',
         recs: {
           full_send:     { title: 'Выложитесь на полную',              body: 'Вы хорошо восстановились — работайте с максимальным весом на всех базовых.' },
           solid_session: { title: 'Хорошая тренировка впереди',        body: 'Хорошая энергия. Держитесь плана, жмите на базовых.' },

@@ -2,7 +2,22 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system/legacy';
-import { initLlama, LlamaContext } from 'llama.rn';
+import { TurboModuleRegistry } from 'react-native';
+
+// llama.rn requires a native dev build (expo run:android / expo run:ios).
+// In Expo Go, the native module is not available — we degrade gracefully.
+const isLlamaAvailable = TurboModuleRegistry.get('RNLlama') !== null;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let initLlama: ((params: any) => Promise<any>) | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LlamaContext = any;
+
+if (isLlamaAvailable) {
+  // Dynamic import to avoid crashing when native module is absent
+  const llamaModule = require('llama.rn') as typeof import('llama.rn');
+  initLlama = llamaModule.initLlama;
+}
 import {
   Checkin,
   PlanDay,
@@ -21,6 +36,7 @@ import { getRecommendationType, getIntensityPercent } from '../engine/aiRecommen
 
 export type ModuleStatus =
   | 'idle'
+  | 'requires_build'
   | 'downloading'
   | 'loading_model'
   | 'ready'
@@ -53,6 +69,7 @@ async function loadModel(
   onStatus: (s: ModuleStatus) => void,
 ): Promise<LlamaContext> {
   if (sharedContext) return sharedContext;
+  if (!initLlama) throw new Error('llama.rn native module not available');
   onStatus('loading_model');
   const modelUri = getModelUri();
   sharedContext = await initLlama(
@@ -69,7 +86,9 @@ async function loadModel(
 
 export function useAIModule(todayPlan: PlanDay | null): AIModuleState {
   const { lang } = useLang();
-  const [status, setStatus] = useState<ModuleStatus>('idle');
+  const [status, setStatus] = useState<ModuleStatus>(
+    isLlamaAvailable ? 'idle' : 'requires_build',
+  );
   const [progress, setProgress] = useState(0);
   const [recommendation, setRecommendation] = useState<AIRecommendation | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -87,7 +106,7 @@ export function useAIModule(todayPlan: PlanDay | null): AIModuleState {
 
   // On mount: check if model was already downloaded
   useEffect(() => {
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'web' || !isLlamaAvailable) return;
     (async () => {
       const flag = await getProfileValue('ai_module_downloaded').catch(() => null);
       if (flag !== '1') return;
@@ -141,7 +160,7 @@ export function useAIModule(todayPlan: PlanDay | null): AIModuleState {
   }, [checkin, todayPlan, lang]);
 
   const download = useCallback(() => {
-    if (status !== 'idle' && status !== 'error') return;
+    if (!isLlamaAvailable || (status !== 'idle' && status !== 'error')) return;
     setStatus('downloading');
     setProgress(0);
     setErrorMessage(null);

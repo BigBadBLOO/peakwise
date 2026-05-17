@@ -40,6 +40,16 @@ export function RecommendationCard({ module }: Props) {
 
   const { status, progress, recommendation, errorMessage, download } = module;
 
+  // ── Requires native dev build ────────────────────────────────────────────────
+  if (status === 'requires_build') {
+    return (
+      <Card>
+        <Overline style={{ marginBottom: t.spacing.sm }}>{w.overline}</Overline>
+        <Body>{w.requires_build}</Body>
+      </Card>
+    );
+  }
+
   // ── Downloading ─────────────────────────────────────────────────────────────
   if (status === 'downloading') {
     const pct = Math.round(progress);
