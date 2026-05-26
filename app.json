@@ -10,20 +10,15 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0EBE6F"
-    },
-    "ios": {
-      "supportsTablet": false,
-      "bundleIdentifier": "com.peakwise.app"
+      "backgroundColor": "#1a1a2e"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0EBE6F"
+        "backgroundColor": "#1a1a2e"
       },
       "package": "com.peakwise.app",
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/favicon.png"
