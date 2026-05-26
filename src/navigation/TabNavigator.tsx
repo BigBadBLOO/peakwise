@@ -1,7 +1,8 @@
 import React from 'react';
-import { Text } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSettings } from '../context/SettingsContext';
+import { useTheme } from '../context/ThemeContext';
+import { Icon } from '../components/Icon';
 import { EssayScreen } from '../screens/essay/EssayScreen';
 import { FlashcardsScreen } from '../screens/flashcards/FlashcardsScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
@@ -13,8 +14,14 @@ const MODULE_SCREENS: Record<string, React.ComponentType<any>> = {
   flashcards: FlashcardsScreen,
 };
 
+const MODULE_ICONS: Record<string, 'essay' | 'cards' | 'settings'> = {
+  essay: 'essay',
+  flashcards: 'cards',
+};
+
 export function TabNavigator() {
   const { settings } = useSettings();
+  const { colors } = useTheme();
 
   const orderedModules = [...settings.modules]
     .filter(m => m.enabled)
@@ -24,11 +31,11 @@ export function TabNavigator() {
     <Tab.Navigator
       screenOptions={{
         headerShown: true,
-        tabBarStyle: { backgroundColor: '#1a1a2e', borderTopColor: '#2d2d4e' },
-        tabBarActiveTintColor: '#7c6af7',
-        tabBarInactiveTintColor: '#666',
-        headerStyle: { backgroundColor: '#1a1a2e' },
-        headerTintColor: '#fff',
+        tabBarStyle: { backgroundColor: colors.tabBg, borderTopColor: colors.tabBorder, borderTopWidth: 1 },
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.text4,
+        headerStyle: { backgroundColor: colors.tabBg },
+        headerTintColor: colors.text,
       }}
     >
       {orderedModules
@@ -40,10 +47,9 @@ export function TabNavigator() {
             component={MODULE_SCREENS[module.id]}
             options={{
               title: module.label,
-              // flashcards has its own nested stack with headers
               headerShown: module.id !== 'flashcards',
               tabBarIcon: ({ color }) => (
-                <Text style={{ fontSize: 20, color }}>{module.icon}</Text>
+                <Icon name={MODULE_ICONS[module.id] ?? 'cards'} size={22} color={color} />
               ),
             }}
           />
@@ -55,7 +61,7 @@ export function TabNavigator() {
         options={{
           title: 'Настройки',
           tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 20, color }}>⚙️</Text>
+            <Icon name="settings" size={22} color={color} />
           ),
         }}
       />

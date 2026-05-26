@@ -26,9 +26,11 @@ function uuid(): string {
 
 // SM-2 algorithm
 // quality: 0-5 (0-2 = fail, 3-5 = pass)
+export const MASTERED_INTERVAL = 180; // days
+
 export function sm2(card: Card, quality: number): Partial<Card> {
   let { repetitions, ease_factor, interval } = card;
-  const ef = Math.max(1.3, ease_factor + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
+  const ef = Math.min(3.0, Math.max(1.3, ease_factor + 0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)));
 
   if (quality < 3) {
     repetitions = 0;
@@ -140,7 +142,7 @@ export async function getChain(chainId: string): Promise<Card[]> {
   );
 }
 
-export async function getDeckStats(deckId: string): Promise<{ total: number; due: number }> {
+export async function getDeckStats(deckId: string): Promise<{ total: number; due: number; mastered: number }> {
   const db = await getDb();
   const total = await db.getFirstAsync<{ count: number }>(
     'SELECT COUNT(*) as count FROM cards WHERE deck_id = ?', deckId,
@@ -149,5 +151,9 @@ export async function getDeckStats(deckId: string): Promise<{ total: number; due
     'SELECT COUNT(*) as count FROM cards WHERE deck_id = ? AND due_date <= ?',
     deckId, Date.now(),
   );
-  return { total: total?.count ?? 0, due: due?.count ?? 0 };
+  const mastered = await db.getFirstAsync<{ count: number }>(
+    'SELECT COUNT(*) as count FROM cards WHERE deck_id = ? AND interval >= ?',
+    deckId, MASTERED_INTERVAL,
+  );
+  return { total: total?.count ?? 0, due: due?.count ?? 0, mastered: mastered?.count ?? 0 };
 }

@@ -27,6 +27,16 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
       created_at INTEGER NOT NULL,
       FOREIGN KEY (deck_id) REFERENCES card_decks(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS user_stats (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      total_xp INTEGER NOT NULL DEFAULT 0,
+      streak_days INTEGER NOT NULL DEFAULT 0,
+      last_activity_date TEXT NOT NULL DEFAULT ''
+    );
+
+    INSERT OR IGNORE INTO user_stats (id, total_xp, streak_days, last_activity_date)
+    VALUES (1, 0, 0, '');
   `);
   return db;
 }

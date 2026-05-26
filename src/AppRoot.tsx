@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SettingsProvider } from './context/SettingsContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { RootNavigator } from './navigation/RootNavigator';
 import { UpdateChecker } from './components/UpdateChecker';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -12,12 +13,14 @@ export function AppRoot() {
     <ErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
-          <SettingsProvider>
-            <NavigationContainer>
-              <UpdateChecker />
-              <RootNavigator />
-            </NavigationContainer>
-          </SettingsProvider>
+          <ThemeProvider>
+            <SettingsProvider>
+              <NavigationContainer>
+                <UpdateChecker />
+                <RootNavigator />
+              </NavigationContainer>
+            </SettingsProvider>
+          </ThemeProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>
     </ErrorBoundary>

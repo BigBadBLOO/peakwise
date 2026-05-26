@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList, Alert, TextInput, Modal, Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  Card, createCard, deleteCard, getCards,
-} from '../../db/flashcards';
+import { useTheme, Colors } from '../../context/ThemeContext';
+import { Icon } from '../../components/Icon';
+import { Card, createCard, deleteCard, getCards, getDeckStats } from '../../db/flashcards';
 
 interface Props {
   navigation: any;
@@ -14,7 +14,11 @@ interface Props {
 
 export function DeckScreen({ navigation, route }: Props) {
   const { deckId } = route.params;
+  const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
+
   const [cards, setCards] = useState<Card[]>([]);
+  const [stats, setStats] = useState({ total: 0, due: 0, mastered: 0 });
   const [modalVisible, setModalVisible] = useState(false);
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
@@ -22,7 +26,9 @@ export function DeckScreen({ navigation, route }: Props) {
   const [chainId, setChainId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setCards(await getCards(deckId));
+    const [c, st] = await Promise.all([getCards(deckId), getDeckStats(deckId)]);
+    setCards(c);
+    setStats(st);
   }, [deckId]);
 
   useEffect(() => {
@@ -31,8 +37,7 @@ export function DeckScreen({ navigation, route }: Props) {
   }, [navigation, load]);
 
   const openAdd = (chainLink?: string) => {
-    setFront('');
-    setBack('');
+    setFront(''); setBack('');
     setIsChain(!!chainLink);
     setChainId(chainLink ?? null);
     setModalVisible(true);
@@ -40,21 +45,14 @@ export function DeckScreen({ navigation, route }: Props) {
 
   const saveCard = async () => {
     if (!front.trim() || !back.trim()) return;
-
-    // Determine chain
     let cId = chainId;
     let cPos = 0;
-
     if (isChain && cId) {
-      // Add to existing chain
-      const chainCards = cards.filter(c => c.chain_id === cId);
-      cPos = chainCards.length;
+      cPos = cards.filter(c => c.chain_id === cId).length;
     } else if (isChain && !cId) {
-      // Start new chain — generate id
       cId = Math.random().toString(36).slice(2) + Date.now().toString(36);
       cPos = 0;
     }
-
     await createCard(deckId, front.trim(), back.trim(), cId ?? undefined, cPos);
     setModalVisible(false);
     load();
@@ -67,30 +65,63 @@ export function DeckScreen({ navigation, route }: Props) {
     ]);
   };
 
-  // Group cards by chain
+  const masteredPct = stats.total > 0 ? Math.round((stats.mastered / stats.total) * 100) : 0;
+
   const grouped: (Card | { type: 'chain'; chainId: string; cards: Card[] })[] = [];
   const seen = new Set<string>();
-
   for (const card of cards) {
     if (!card.chain_id) {
       grouped.push(card);
     } else if (!seen.has(card.chain_id)) {
       seen.add(card.chain_id);
-      const chainCards = cards.filter(c => c.chain_id === card.chain_id).sort((a, b) => a.chain_position - b.chain_position);
+      const chainCards = cards
+        .filter(c => c.chain_id === card.chain_id)
+        .sort((a, b) => a.chain_position - b.chain_position);
       grouped.push({ type: 'chain', chainId: card.chain_id, cards: chainCards });
     }
   }
 
   return (
     <SafeAreaView style={s.container} edges={['bottom']}>
+      {/* Stats row */}
+      <View style={s.statsRow}>
+        <View style={s.statBlock}>
+          <Text style={s.statNum}>{stats.total}</Text>
+          <Text style={s.statLbl}>Всего</Text>
+        </View>
+        <View style={s.statDivider} />
+        <View style={s.statBlock}>
+          <Text style={[s.statNum, stats.due > 0 && { color: colors.accent }]}>{stats.due}</Text>
+          <Text style={s.statLbl}>На сегодня</Text>
+        </View>
+        <View style={s.statDivider} />
+        <View style={s.statBlock}>
+          <Text style={[s.statNum, { color: colors.mint }]}>{stats.mastered}</Text>
+          <Text style={s.statLbl}>Освоено</Text>
+        </View>
+        {stats.due > 0 && (
+          <>
+            <View style={s.statDivider} />
+            <TouchableOpacity
+              style={s.reviewQuickBtn}
+              onPress={() => navigation.navigate('Review', { deckId, deckName: route.params.deckName })}
+            >
+              <Icon name="play" size={13} color="#fff" />
+              <Text style={s.reviewQuickText}>Повторить</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+
       <FlatList
         data={grouped}
         keyExtractor={(item: any) => item.id ?? item.chainId}
         contentContainerStyle={s.list}
         ListEmptyComponent={
           <View style={s.empty}>
-            <Text style={s.emptyIcon}>📝</Text>
+            <Icon name="cards" size={36} color={colors.text4} />
             <Text style={s.emptyText}>Нет карточек</Text>
+            <Text style={s.emptyHint}>Добавь первую карточку</Text>
           </View>
         }
         renderItem={({ item }: any) => {
@@ -98,41 +129,34 @@ export function DeckScreen({ navigation, route }: Props) {
             return (
               <View style={s.chainBlock}>
                 <View style={s.chainHeader}>
-                  <Text style={s.chainLabel}>🔗 Цепочка ({item.cards.length} карточек)</Text>
-                  <TouchableOpacity onPress={() => openAdd(item.chainId)}>
-                    <Text style={s.addToChain}>+ Добавить</Text>
+                  <View style={s.chainHeaderLeft}>
+                    <Icon name="link" size={14} color={colors.accent} />
+                    <Text style={s.chainLabel}>Цепочка ({item.cards.length})</Text>
+                  </View>
+                  <TouchableOpacity style={s.addToChainBtn} onPress={() => openAdd(item.chainId)}>
+                    <Icon name="plus" size={14} color={colors.accent} strokeWidth={2.5} />
+                    <Text style={s.addToChainText}>Добавить</Text>
                   </TouchableOpacity>
                 </View>
                 {item.cards.map((c: Card, idx: number) => (
-                  <TouchableOpacity key={c.id} style={s.chainCard} onLongPress={() => remove(c)}>
-                    <Text style={s.chainPos}>{idx + 1}</Text>
-                    <View style={s.cardTexts}>
-                      <Text style={s.cardFront}>{c.front}</Text>
-                      <Text style={s.cardBack}>{c.back}</Text>
-                    </View>
-                  </TouchableOpacity>
+                  <ChainCardRow key={c.id} card={c} idx={idx} onRemove={remove} s={s} />
                 ))}
               </View>
             );
           }
           const c = item as Card;
-          return (
-            <TouchableOpacity style={s.cardRow} onLongPress={() => remove(c)}>
-              <View style={s.cardTexts}>
-                <Text style={s.cardFront}>{c.front}</Text>
-                <Text style={s.cardBack}>{c.back}</Text>
-              </View>
-            </TouchableOpacity>
-          );
+          return <CardRow card={c} onRemove={remove} s={s} />;
         }}
       />
 
       <View style={s.fab}>
         <TouchableOpacity style={[s.fabBtn, { flex: 1 }]} onPress={() => openAdd()}>
-          <Text style={s.fabText}>+ Карточка</Text>
+          <Icon name="plus" size={16} color="#fff" strokeWidth={2.5} />
+          <Text style={s.fabText}>Карточка</Text>
         </TouchableOpacity>
         <TouchableOpacity style={[s.fabBtn, s.chainFabBtn]} onPress={() => openAdd(undefined)}>
-          <Text style={s.fabText}>🔗 Цепочка</Text>
+          <Icon name="link" size={16} color={colors.accent} />
+          <Text style={s.chainFabText}>Цепочка</Text>
         </TouchableOpacity>
       </View>
 
@@ -143,7 +167,7 @@ export function DeckScreen({ navigation, route }: Props) {
             <TextInput
               style={s.input}
               placeholder="Лицевая сторона"
-              placeholderTextColor="#555"
+              placeholderTextColor={colors.text4}
               value={front}
               onChangeText={setFront}
               multiline
@@ -151,7 +175,7 @@ export function DeckScreen({ navigation, route }: Props) {
             <TextInput
               style={s.input}
               placeholder="Обратная сторона"
-              placeholderTextColor="#555"
+              placeholderTextColor={colors.text4}
               value={back}
               onChangeText={setBack}
               multiline
@@ -159,15 +183,14 @@ export function DeckScreen({ navigation, route }: Props) {
             {!chainId && (
               <View style={s.switchRow}>
                 <Text style={s.switchLabel}>Начать цепочку</Text>
-                <Switch
-                  value={isChain}
-                  onValueChange={setIsChain}
-                  trackColor={{ true: '#7c6af7' }}
-                />
+                <Switch value={isChain} onValueChange={setIsChain} trackColor={{ true: colors.accent }} />
               </View>
             )}
             {chainId && (
-              <Text style={s.chainNote}>Будет добавлена в существующую цепочку</Text>
+              <View style={s.chainNote}>
+                <Icon name="link" size={14} color={colors.accent} />
+                <Text style={s.chainNoteText}>Добавляется в цепочку</Text>
+              </View>
             )}
             <View style={s.modalBtns}>
               <TouchableOpacity style={s.cancelBtn} onPress={() => setModalVisible(false)}>
@@ -188,94 +211,120 @@ export function DeckScreen({ navigation, route }: Props) {
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f0f1a' },
+function CardRow({ card, onRemove, s }: { card: Card; onRemove: (c: Card) => void; s: any }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <TouchableOpacity
+      style={s.cardRow}
+      onPress={() => setExpanded(v => !v)}
+      onLongPress={() => onRemove(card)}
+      activeOpacity={0.85}
+    >
+      <View style={s.cardTexts}>
+        <Text style={s.cardFront}>{card.front}</Text>
+        {expanded && <Text style={s.cardBack}>{card.back}</Text>}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function ChainCardRow({ card, idx, onRemove, s }: { card: Card; idx: number; onRemove: (c: Card) => void; s: any }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <TouchableOpacity
+      style={s.chainCard}
+      onPress={() => setExpanded(v => !v)}
+      onLongPress={() => onRemove(card)}
+      activeOpacity={0.85}
+    >
+      <Text style={s.chainPos}>{idx + 1}</Text>
+      <View style={s.cardTexts}>
+        <Text style={s.cardFront}>{card.front}</Text>
+        {expanded && <Text style={s.cardBack}>{card.back}</Text>}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+const makeStyles = (c: Colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: c.bg },
+  statsRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: c.surface, borderBottomWidth: 1, borderBottomColor: c.border,
+    paddingVertical: 12, paddingHorizontal: 20, gap: 0,
+  },
+  statBlock: { flex: 1, alignItems: 'center', gap: 2 },
+  statNum: { fontSize: 20, fontWeight: '800', color: c.text },
+  statLbl: { fontSize: 11, color: c.text4, fontWeight: '600' },
+  statDivider: { width: 1, height: 32, backgroundColor: c.border },
+  reviewQuickBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: c.accent, borderRadius: 10,
+    paddingHorizontal: 12, paddingVertical: 8, marginLeft: 8,
+  },
+  reviewQuickText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   list: { padding: 16, paddingBottom: 90 },
   empty: { alignItems: 'center', paddingTop: 60, gap: 8 },
-  emptyIcon: { fontSize: 40 },
-  emptyText: { color: '#666', fontSize: 16 },
+  emptyText: { color: c.text, fontSize: 16, fontWeight: '700' },
+  emptyHint: { color: c.text4, fontSize: 13 },
   cardRow: {
-    backgroundColor: '#1e1e30',
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 8,
+    backgroundColor: c.surface, borderRadius: 12, padding: 14,
+    marginBottom: 8, borderWidth: 1, borderColor: c.border,
   },
   cardTexts: { gap: 4 },
-  cardFront: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  cardBack: { color: '#aaa', fontSize: 14 },
+  cardFront: { color: c.text, fontSize: 15, fontWeight: '700' },
+  cardBack: { color: c.text3, fontSize: 13, lineHeight: 18 },
   chainBlock: {
-    backgroundColor: '#1a1a2e',
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#7c6af730',
-    overflow: 'hidden',
+    backgroundColor: c.surface2,
+    borderRadius: 14, marginBottom: 12,
+    borderWidth: 1, borderColor: c.accent + '30', overflow: 'hidden',
   },
   chainHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#2a2040',
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    padding: 12, backgroundColor: c.accentSurface,
   },
-  chainLabel: { color: '#7c6af7', fontWeight: '600', fontSize: 14 },
-  addToChain: { color: '#7c6af7', fontSize: 13 },
+  chainHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  chainLabel: { color: c.accent, fontWeight: '700', fontSize: 13 },
+  addToChainBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  addToChainText: { color: c.accent, fontSize: 12, fontWeight: '700' },
   chainCard: {
-    flexDirection: 'row',
-    gap: 10,
-    padding: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#2d2d4e',
-    alignItems: 'flex-start',
+    flexDirection: 'row', gap: 10, padding: 12,
+    borderTopWidth: 1, borderTopColor: c.border, alignItems: 'flex-start',
   },
-  chainPos: {
-    color: '#7c6af7',
-    fontWeight: '700',
-    fontSize: 14,
-    width: 20,
-    marginTop: 2,
-  },
+  chainPos: { color: c.accent, fontWeight: '800', fontSize: 14, width: 20, marginTop: 2 },
   fab: { position: 'absolute', bottom: 20, left: 16, right: 16, flexDirection: 'row', gap: 8 },
   fabBtn: {
-    backgroundColor: '#7c6af7',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
+    backgroundColor: c.accent, borderRadius: 14, padding: 14,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
   },
-  chainFabBtn: { backgroundColor: '#4a3080' },
-  fabText: { color: '#fff', fontWeight: '600', fontSize: 15 },
-  overlay: { flex: 1, backgroundColor: '#000000aa', justifyContent: 'flex-end' },
+  chainFabBtn: { backgroundColor: c.accentSurface, borderWidth: 1, borderColor: c.accent + '40' },
+  fabText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  chainFabText: { color: c.accent, fontWeight: '700', fontSize: 14 },
+  overlay: { flex: 1, backgroundColor: c.overlay, justifyContent: 'flex-end' },
   modal: {
-    backgroundColor: '#1e1e30',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    gap: 12,
+    backgroundColor: c.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 20, gap: 12,
   },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: c.text },
   input: {
-    backgroundColor: '#0f0f1a',
-    borderRadius: 10,
-    padding: 12,
-    color: '#fff',
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: '#2d2d4e',
-    minHeight: 60,
+    backgroundColor: c.inputBg, borderRadius: 12, padding: 12,
+    color: c.text, fontSize: 15, borderWidth: 1, borderColor: c.border, minHeight: 60,
   },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  switchLabel: { color: '#aaa', fontSize: 15 },
-  chainNote: { color: '#7c6af7', fontSize: 13, textAlign: 'center' },
+  switchLabel: { color: c.text3, fontSize: 15 },
+  chainNote: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: c.accentSurface, borderRadius: 10, padding: 10,
+  },
+  chainNoteText: { color: c.accent, fontSize: 13, fontWeight: '600' },
   modalBtns: { flexDirection: 'row', gap: 10 },
   cancelBtn: {
-    flex: 1, backgroundColor: '#2d2d4e', borderRadius: 10,
-    padding: 14, alignItems: 'center',
+    flex: 1, backgroundColor: c.surface2, borderRadius: 12, padding: 14, alignItems: 'center',
   },
-  cancelText: { color: '#aaa', fontWeight: '600' },
+  cancelText: { color: c.text3, fontWeight: '700' },
   saveBtn: {
-    flex: 1, backgroundColor: '#7c6af7', borderRadius: 10,
-    padding: 14, alignItems: 'center',
+    flex: 1, backgroundColor: c.accent, borderRadius: 12, padding: 14, alignItems: 'center',
   },
   saveBtnDisabled: { opacity: 0.4 },
-  saveText: { color: '#fff', fontWeight: '600' },
+  saveText: { color: '#fff', fontWeight: '700' },
 });
