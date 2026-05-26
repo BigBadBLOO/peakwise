@@ -43,15 +43,19 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      const [storedModules, storedKey] = await Promise.all([
-        AsyncStorage.getItem(MODULES_KEY),
-        SecureStore.getItemAsync(API_KEY_SECURE_KEY),
-      ]);
+      try {
+        const [storedModules, storedKey] = await Promise.all([
+          AsyncStorage.getItem(MODULES_KEY).catch(() => null),
+          SecureStore.getItemAsync(API_KEY_SECURE_KEY).catch(() => null),
+        ]);
 
-      setSettings({
-        claudeApiKey: storedKey ?? '',
-        modules: storedModules ? JSON.parse(storedModules) : DEFAULT_MODULES,
-      });
+        setSettings({
+          claudeApiKey: storedKey ?? '',
+          modules: storedModules ? JSON.parse(storedModules) : DEFAULT_MODULES,
+        });
+      } catch {
+        // Keep defaults on any error
+      }
       setIsLoaded(true);
     })();
   }, []);
