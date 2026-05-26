@@ -9,8 +9,8 @@
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#1a1a2e"
+      "resizeMode": "cover",
+      "backgroundColor": "#100828"
     },
     "android": {
       "adaptiveIcon": {
