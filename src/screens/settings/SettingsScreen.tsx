@@ -148,7 +148,7 @@ export function SettingsScreen() {
             <Icon name="drag" size={16} color={colors.text4} />
             <View style={[s.moduleIcon, { backgroundColor: m.enabled ? colors.accentSurface : colors.surface2 }]}>
               <Icon
-                name={m.id === 'flashcards' ? 'cards' : m.id === 'essay' ? 'essay' : 'settings'}
+                name={m.id === 'flashcards' ? 'cards' : m.id === 'essay' ? 'essay' : m.id === 'workout' ? 'dumbbell' : 'settings'}
                 size={18}
                 color={m.enabled ? colors.accent : colors.text4}
               />

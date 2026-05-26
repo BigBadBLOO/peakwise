@@ -5,6 +5,7 @@ import { useTheme } from '../context/ThemeContext';
 import { Icon } from '../components/Icon';
 import { EssayScreen } from '../screens/essay/EssayScreen';
 import { FlashcardsScreen } from '../screens/flashcards/FlashcardsScreen';
+import { WorkoutScreen } from '../screens/workout/WorkoutScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
 
 const Tab = createBottomTabNavigator();
@@ -12,23 +13,30 @@ const Tab = createBottomTabNavigator();
 const MODULE_SCREENS: Record<string, React.ComponentType<any>> = {
   essay: EssayScreen,
   flashcards: FlashcardsScreen,
+  workout: WorkoutScreen,
 };
 
-const MODULE_ICONS: Record<string, 'essay' | 'cards' | 'settings'> = {
+const MODULE_ICONS: Record<string, 'essay' | 'cards' | 'settings' | 'dumbbell'> = {
   essay: 'essay',
   flashcards: 'cards',
+  workout: 'dumbbell',
 };
 
 export function TabNavigator() {
-  const { settings } = useSettings();
+  const { settings, isLoaded } = useSettings();
   const { colors } = useTheme();
 
   const orderedModules = [...settings.modules]
     .filter(m => m.enabled)
     .sort((a, b) => a.order - b.order);
 
+  const initialRoute = orderedModules.find(m => !!MODULE_SCREENS[m.id])?.id ?? 'settings';
+
+  if (!isLoaded) return null;
+
   return (
     <Tab.Navigator
+      initialRouteName={initialRoute}
       screenOptions={{
         headerShown: true,
         tabBarStyle: { backgroundColor: colors.tabBg, borderTopColor: colors.tabBorder, borderTopWidth: 1 },
@@ -47,7 +55,7 @@ export function TabNavigator() {
             component={MODULE_SCREENS[module.id]}
             options={{
               title: module.label,
-              headerShown: module.id !== 'flashcards',
+              headerShown: module.id !== 'flashcards' && module.id !== 'workout',
               tabBarIcon: ({ color }) => (
                 <Icon name={MODULE_ICONS[module.id] ?? 'cards'} size={22} color={color} />
               ),

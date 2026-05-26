@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
-export type ModuleId = 'essay' | 'flashcards';
+export type ModuleId = 'essay' | 'flashcards' | 'workout';
 
 export interface ModuleConfig {
   id: ModuleId;
@@ -13,8 +13,9 @@ export interface ModuleConfig {
 }
 
 const DEFAULT_MODULES: ModuleConfig[] = [
-  { id: 'essay', label: 'Изложение', icon: '✍️', enabled: true, order: 0 },
-  { id: 'flashcards', label: 'Карточки', icon: '🃏', enabled: true, order: 1 },
+  { id: 'flashcards', label: 'Карточки', icon: '🃏', enabled: true, order: 0 },
+  { id: 'workout', label: 'Тренировки', icon: '💪', enabled: true, order: 1 },
+  { id: 'essay', label: 'Изложение', icon: '✍️', enabled: true, order: 2 },
 ];
 
 interface Settings {
@@ -49,9 +50,16 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           SecureStore.getItemAsync(API_KEY_SECURE_KEY).catch(() => null),
         ]);
 
+        let modules: ModuleConfig[] = storedModules ? JSON.parse(storedModules) : DEFAULT_MODULES;
+        // Ensure any new default modules are added when user upgrades
+        for (const def of DEFAULT_MODULES) {
+          if (!modules.find(m => m.id === def.id)) {
+            modules = [...modules, { ...def, order: modules.length }];
+          }
+        }
         setSettings({
           claudeApiKey: storedKey ?? '',
-          modules: storedModules ? JSON.parse(storedModules) : DEFAULT_MODULES,
+          modules,
         });
       } catch {
         // Keep defaults on any error

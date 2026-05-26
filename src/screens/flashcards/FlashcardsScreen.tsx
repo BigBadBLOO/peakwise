@@ -65,7 +65,7 @@ function DecksListScreen({ navigation }: any) {
     setLoading(true);
     const list = await getDecks();
     setDecks(list);
-    const st: Record<string, { total: number; due: number }> = {};
+    const st: Record<string, { total: number; due: number; mastered: number }> = {};
     await Promise.all(list.map(async d => { st[d.id] = await getDeckStats(d.id); }));
     setStats(st);
     setLoading(false);

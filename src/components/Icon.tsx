@@ -8,7 +8,8 @@ type IconName =
   | 'back' | 'search' | 'more' | 'play' | 'check' | 'eye' | 'eye-off'
   | 'drag' | 'swap' | 'edit' | 'trash' | 'stack' | 'rotate'
   | 'filter' | 'wand' | 'clock' | 'shield' | 'key' | 'book'
-  | 'lightning' | 'link' | 'compose';
+  | 'lightning' | 'link' | 'compose'
+  | 'dumbbell' | 'stopwatch' | 'pause' | 'lap' | 'chart-bar' | 'calendar';
 
 interface IconProps {
   name: IconName;
@@ -281,6 +282,57 @@ export function Icon({ name, size = 22, color = 'currentColor', strokeWidth = 1.
       return (
         <Svg width={size} height={size} viewBox="0 0 24 24">
           <Path d="M7 5 L19 12 L7 19 Z" fill={color} stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" />
+        </Svg>
+      );
+    case 'dumbbell':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Path d="M6 8 H4 a1 1 0 0 0 -1 1 v6 a1 1 0 0 0 1 1 H6" {...p} />
+          <Path d="M18 8 H20 a1 1 0 0 1 1 1 v6 a1 1 0 0 1 -1 1 H18" {...p} />
+          <Path d="M6 6 H8 a1 1 0 0 1 1 1 v10 a1 1 0 0 1 -1 1 H6 a1 1 0 0 1 -1 -1 V7 a1 1 0 0 1 1 -1 z" {...p} />
+          <Path d="M18 6 H16 a1 1 0 0 0 -1 1 v10 a1 1 0 0 0 1 1 H18 a1 1 0 0 0 1 -1 V7 a1 1 0 0 0 -1 -1 z" {...p} />
+          <Path d="M9 12 H15" {...p} />
+        </Svg>
+      );
+    case 'stopwatch':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Circle cx="12" cy="13" r="7.5" {...p} />
+          <Path d="M12 9 V13 L14.5 15" {...p} />
+          <Path d="M10 3 H14" {...p} />
+          <Path d="M19 5 L21 7" {...p} />
+        </Svg>
+      );
+    case 'pause':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Path d="M9 5 V19 M15 5 V19" {...p} strokeWidth={strokeWidth + 0.5} />
+        </Svg>
+      );
+    case 'lap':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Circle cx="12" cy="12" r="8" {...p} />
+          <Path d="M12 7 V12 L15 15" {...p} />
+          <Path d="M17 3 L21 3 L21 7" {...p} />
+        </Svg>
+      );
+    case 'chart-bar':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Path d="M4 20 H20" {...p} />
+          <Path d="M6 20 V13 H9 V20" {...p} />
+          <Path d="M11 20 V8 H14 V20" {...p} />
+          <Path d="M16 20 V5 H19 V20" {...p} />
+        </Svg>
+      );
+    case 'calendar':
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24">
+          <Rect x="3" y="5" width="18" height="16" rx="2" {...p} />
+          <Path d="M3 10 H21" {...p} />
+          <Path d="M8 3 V7 M16 3 V7" {...p} />
+          <Path d="M7 14 H8 M11 14 H12 M15 14 H16 M7 17 H8 M11 17 H12" {...p} strokeWidth={strokeWidth + 0.5} />
         </Svg>
       );
     default:
