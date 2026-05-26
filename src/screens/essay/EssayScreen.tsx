@@ -10,6 +10,7 @@ import { useTheme, Colors } from '../../context/ThemeContext';
 import { Icon } from '../../components/Icon';
 import { claudeChat } from '../../services/claude';
 import { addXp, ESSAY_XP } from '../../db/stats';
+import { useLlama, LlamaStatus } from '../../hooks/useLlama';
 
 type Stage =
   | 'level-select'
@@ -42,6 +43,7 @@ export function EssayScreen() {
   const { settings } = useSettings();
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
+  const llama = useLlama();
 
   const [stage, setStage] = useState<Stage>('level-select');
   const [level, setLevel] = useState(3);
@@ -53,25 +55,33 @@ export function EssayScreen() {
   const [feedback, setFeedback] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const checkKey = () => {
-    if (!settings.claudeApiKey) {
-      Alert.alert('Нет токена', 'Укажи токен Claude API в настройках');
-      return false;
+  const checkAI = (): boolean => {
+    if (llama.isReady || settings.claudeApiKey) return true;
+    Alert.alert(
+      'Нужен AI',
+      'Загрузи модель на устройство (кнопка выше) или укажи API-ключ Claude в настройках.',
+    );
+    return false;
+  };
+
+  const aiGenerate = async (system: string, user: string, maxTokens = 600): Promise<string> => {
+    if (llama.isReady) {
+      return llama.generate(system, user, maxTokens);
     }
-    return true;
+    return claudeChat(settings.claudeApiKey, [{ role: 'user', content: user }], system);
   };
 
   const generateText = async () => {
-    if (!checkKey()) return;
+    if (!checkAI()) return;
     setLoading(true);
     try {
       const topicDesc = topic !== 'any' ? `, тема: ${TOPICS.find(t => t.id === topic)?.label ?? topic}` : '';
-      const text = await claudeChat(
-        settings.claudeApiKey,
-        [{ role: 'user', content: `Уровень сложности: ${level}/5${topicDesc}` }],
+      const text = await aiGenerate(
         SYSTEM_GENERATE,
+        `Уровень сложности: ${level}/5${topicDesc}`,
+        700,
       );
-      setSourceText(text.trim());
+      setSourceText(text);
       setStage('reading');
     } catch (e: any) {
       Alert.alert('Ошибка', e.message);
@@ -82,15 +92,15 @@ export function EssayScreen() {
 
   const checkRetelling = async () => {
     if (!retellingInput.trim()) return;
-    if (!checkKey()) return;
+    if (!checkAI()) return;
     setLoading(true);
     try {
-      const result = await claudeChat(
-        settings.claudeApiKey,
-        [{ role: 'user', content: `Оригинальный текст:\n${sourceText}\n\nИзложение ученика:\n${retellingInput}` }],
+      const result = await aiGenerate(
         SYSTEM_CHECK_RETELLING,
+        `Оригинальный текст:\n${sourceText}\n\nИзложение ученика:\n${retellingInput}`,
+        600,
       );
-      setFeedback(result.trim());
+      setFeedback(result);
       setStage('feedback-retelling');
       await addXp(ESSAY_XP.retelling);
     } catch (e: any) {
@@ -101,16 +111,16 @@ export function EssayScreen() {
   };
 
   const generateEssayTopic = async () => {
-    if (!checkKey()) return;
+    if (!checkAI()) return;
     setLoading(true);
     try {
       const topicDesc = topic !== 'any' ? `, тема: ${TOPICS.find(t => t.id === topic)?.label ?? topic}` : '';
-      const result = await claudeChat(
-        settings.claudeApiKey,
-        [{ role: 'user', content: `Уровень сложности: ${level}/5${topicDesc}` }],
+      const result = await aiGenerate(
         SYSTEM_ESSAY_TOPIC,
+        `Уровень сложности: ${level}/5${topicDesc}`,
+        100,
       );
-      setEssayTopic(result.trim());
+      setEssayTopic(result);
       setStage('writing-essay');
     } catch (e: any) {
       Alert.alert('Ошибка', e.message);
@@ -121,15 +131,15 @@ export function EssayScreen() {
 
   const checkEssay = async () => {
     if (!essayInput.trim()) return;
-    if (!checkKey()) return;
+    if (!checkAI()) return;
     setLoading(true);
     try {
-      const result = await claudeChat(
-        settings.claudeApiKey,
-        [{ role: 'user', content: `Тема сочинения: ${essayTopic}\n\nСочинение ученика:\n${essayInput}` }],
+      const result = await aiGenerate(
         SYSTEM_CHECK_ESSAY,
+        `Тема сочинения: ${essayTopic}\n\nСочинение ученика:\n${essayInput}`,
+        600,
       );
-      setFeedback(result.trim());
+      setFeedback(result);
       setStage('feedback-essay');
       await addXp(ESSAY_XP.essay);
     } catch (e: any) {
@@ -145,13 +155,20 @@ export function EssayScreen() {
     setEssayInput(''); setFeedback('');
   };
 
+  const isWorking = loading || llama.status === 'inferring';
+
   return (
     <SafeAreaView style={s.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
         {stage === 'level-select' && (
           <LevelSelect level={level} topic={topic}
             onLevelChange={setLevel} onTopicChange={setTopic}
-            onGenerate={generateText} loading={loading} s={s} colors={colors} />
+            onGenerate={generateText} loading={isWorking}
+            llamaStatus={llama.status} llamaProgress={llama.progress}
+            llamaError={llama.errorMessage}
+            onDownload={llama.download}
+            hasApiKey={!!settings.claudeApiKey}
+            s={s} colors={colors} />
         )}
         {stage === 'reading' && (
           <Reading text={sourceText} onDone={() => setStage('writing-retelling')} s={s} />
@@ -159,17 +176,17 @@ export function EssayScreen() {
         {stage === 'writing-retelling' && (
           <Writing title="Напиши изложение" hint="Перескажи прочитанный текст своими словами"
             value={retellingInput} onChange={setRetellingInput}
-            onSubmit={checkRetelling} loading={loading} s={s} colors={colors} />
+            onSubmit={checkRetelling} loading={isWorking} s={s} colors={colors} />
         )}
         {stage === 'feedback-retelling' && (
           <Feedback title="Обратная связь" text={feedback}
             onNext={generateEssayTopic} nextLabel="Перейти к сочинению →"
-            loading={loading} s={s} />
+            loading={isWorking} s={s} />
         )}
         {stage === 'writing-essay' && (
           <Writing title={`Сочинение: ${essayTopic}`} hint="Напиши своё сочинение по теме"
             value={essayInput} onChange={setEssayInput}
-            onSubmit={checkEssay} loading={loading} s={s} colors={colors} />
+            onSubmit={checkEssay} loading={isWorking} s={s} colors={colors} />
         )}
         {(stage === 'checking-retelling' || stage === 'checking-essay') && (
           <View style={s.center}>
@@ -187,15 +204,81 @@ export function EssayScreen() {
   );
 }
 
-function LevelSelect({ level, topic, onLevelChange, onTopicChange, onGenerate, loading, s, colors }: {
+// ── Model banner ─────────────────────────────────────────────────────────────
+
+function ModelBanner({ status, progress, errorMessage, onDownload, s, colors }: {
+  status: LlamaStatus; progress: number; errorMessage: string | null;
+  onDownload: () => void; s: any; colors: Colors;
+}) {
+  if (status === 'ready') return null;
+
+  if (status === 'requires_build') {
+    return (
+      <View style={s.banner}>
+        <Text style={s.bannerText}>Для AI на устройстве нужна нативная сборка (expo run:android / expo run:ios)</Text>
+      </View>
+    );
+  }
+
+  if (status === 'downloading') {
+    const pct = Math.round(progress);
+    return (
+      <View style={s.banner}>
+        <View style={s.bannerRow}>
+          <Text style={s.bannerTitle}>Загружаю модель… {pct}%</Text>
+          <Text style={s.bannerSub}>~1.1 ГБ · не закрывай приложение</Text>
+        </View>
+        <View style={s.progressTrack}>
+          <View style={[s.progressFill, { width: `${pct}%` as any }]} />
+        </View>
+      </View>
+    );
+  }
+
+  if (status === 'loading_model') {
+    return (
+      <View style={s.banner}>
+        <ActivityIndicator size="small" color={colors.mint} />
+        <Text style={s.bannerTitle}>Загружаю модель в память…</Text>
+      </View>
+    );
+  }
+
+  // idle or error
+  return (
+    <View style={s.bannerDownload}>
+      <View style={s.bannerDownloadInfo}>
+        <Text style={s.bannerTitle}>AI на устройстве</Text>
+        <Text style={s.bannerSub}>Qwen2.5-1.5B · ~1.1 ГБ · бесплатно</Text>
+        {errorMessage && <Text style={s.bannerError}>{errorMessage}</Text>}
+      </View>
+      <TouchableOpacity style={s.bannerBtn} onPress={onDownload} activeOpacity={0.85}>
+        <Icon name="arrow-down" size={14} color="#fff" />
+        <Text style={s.bannerBtnText}>{status === 'error' ? 'Повтор' : 'Скачать'}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ── Sub-screens ───────────────────────────────────────────────────────────────
+
+function LevelSelect({ level, topic, onLevelChange, onTopicChange, onGenerate, loading,
+  llamaStatus, llamaProgress, llamaError, onDownload, hasApiKey, s, colors }: {
   level: number; topic: string;
   onLevelChange: (v: number) => void; onTopicChange: (v: string) => void;
-  onGenerate: () => void; loading: boolean; s: any; colors: Colors;
+  onGenerate: () => void; loading: boolean;
+  llamaStatus: LlamaStatus; llamaProgress: number; llamaError: string | null;
+  onDownload: () => void; hasApiKey: boolean;
+  s: any; colors: Colors;
 }) {
   const current = LEVELS[level - 1];
+  const aiReady = llamaStatus === 'ready';
+  const generateLabel = aiReady
+    ? 'Сгенерировать текст'
+    : hasApiKey ? 'Сгенерировать текст (Cloud)' : 'Сгенерировать текст';
+
   return (
     <View>
-      {/* Gradient hero */}
       <LinearGradient
         colors={['#2A2249', '#5B47E0', '#7B5FE8']}
         style={s.hero}
@@ -211,6 +294,13 @@ function LevelSelect({ level, topic, onLevelChange, onTopicChange, onGenerate, l
       </LinearGradient>
 
       <View style={s.section}>
+        {/* Model banner — hidden when ready */}
+        <ModelBanner
+          status={llamaStatus} progress={llamaProgress}
+          errorMessage={llamaError} onDownload={onDownload}
+          s={s} colors={colors}
+        />
+
         {/* Level grid */}
         <View style={s.sectionHeader}>
           <Text style={s.sectionLabel}>Уровень</Text>
@@ -261,7 +351,7 @@ function LevelSelect({ level, topic, onLevelChange, onTopicChange, onGenerate, l
           ) : (
             <>
               <Icon name="wand" size={18} color="#fff" strokeWidth={1.75} />
-              <Text style={s.btnText}>Сгенерировать текст</Text>
+              <Text style={s.btnText}>{generateLabel}</Text>
             </>
           )}
         </TouchableOpacity>
@@ -338,6 +428,8 @@ function Feedback({ title, text, onNext, nextLabel, loading, s }: {
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const makeStyles = (c: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.bg },
   scroll: { paddingBottom: 40 },
@@ -402,7 +494,37 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   feedbackText: { color: c.successText, fontSize: 15, lineHeight: 24 },
   center: { alignItems: 'center', paddingVertical: 60, gap: 16 },
   loadingText: { color: c.text3, fontSize: 16 },
+
+  // Model banner
+  banner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: c.surface, borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: c.border, marginBottom: 20,
+  },
+  bannerRow: { flex: 1 },
+  bannerTitle: { fontSize: 13, fontWeight: '700', color: c.text },
+  bannerSub: { fontSize: 11, color: c.text4, marginTop: 2 },
+  bannerText: { flex: 1, fontSize: 12, color: c.text4, lineHeight: 16 },
+  bannerError: { fontSize: 11, color: c.rateForgot ?? '#E0455A', marginTop: 3 },
+  bannerDownload: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: c.mintSoft, borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: c.mint + '40', marginBottom: 20,
+  },
+  bannerDownloadInfo: { flex: 1, marginRight: 12 },
+  bannerBtn: {
+    backgroundColor: c.mint, borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 9,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+  },
+  bannerBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  progressTrack: {
+    height: 4, backgroundColor: c.border, borderRadius: 2, marginTop: 8, overflow: 'hidden',
+  },
+  progressFill: { height: 4, backgroundColor: c.mint, borderRadius: 2 },
 });
+
+// ── Prompts ───────────────────────────────────────────────────────────────────
 
 const SYSTEM_GENERATE = `Ты учитель русского языка. Сгенерируй текст для изложения.
 Уровень 1 — очень простой (80-120 слов). Уровень 2 — простой (120-180 слов).
