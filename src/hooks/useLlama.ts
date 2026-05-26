@@ -2,18 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { TurboModuleRegistry } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 
-// llama.rn only works in a native dev build — not in Expo Go.
-const isLlamaAvailable = TurboModuleRegistry.get('RNLlama') !== null;
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let initLlama: ((params: any, cb: any) => Promise<any>) | null = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type LlamaContext = any;
-
-if (isLlamaAvailable) {
-  const m = require('llama.rn') as typeof import('llama.rn');
-  initLlama = m.initLlama;
-}
+// With New Architecture (TurboModules), native modules are lazy — the .so is loaded
+// only on first TurboModuleRegistry.get() call, not at app startup.
+// We also defer require('llama.rn') to inside download() so nothing loads until the user taps.
 
 const MODEL_URL =
   'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf';
@@ -23,8 +14,23 @@ function modelPath(): string {
   return (FileSystem.documentDirectory ?? '') + MODEL_FILENAME;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type LlamaContext = any;
+
 // Singleton — survives re-renders and screen navigation
 let sharedCtx: LlamaContext | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let cachedInitLlama: ((params: any, cb: any) => Promise<any>) | null = null;
+
+function getLlamaModule(): { initLlama: typeof cachedInitLlama } | null {
+  // Only access TurboModuleRegistry here — deferred from module load time
+  if (TurboModuleRegistry.get('RNLlama') === null) return null;
+  if (!cachedInitLlama) {
+    const m = require('llama.rn') as typeof import('llama.rn');
+    cachedInitLlama = m.initLlama;
+  }
+  return { initLlama: cachedInitLlama };
+}
 
 export type LlamaStatus =
   | 'idle'
@@ -44,19 +50,8 @@ export interface UseLlamaResult {
   generate: (system: string, user: string, maxTokens?: number) => Promise<string>;
 }
 
-async function loadCtx(): Promise<LlamaContext> {
-  if (sharedCtx) return sharedCtx;
-  sharedCtx = await initLlama!(
-    { model: modelPath(), n_ctx: 2048, n_threads: 4, n_gpu_layers: 0 },
-    () => {},
-  );
-  return sharedCtx;
-}
-
 export function useLlama(): UseLlamaResult {
-  const [status, setStatus] = useState<LlamaStatus>(
-    isLlamaAvailable ? 'idle' : 'requires_build',
-  );
+  const [status, setStatus] = useState<LlamaStatus>('idle');
   const [progress, setProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const dlRef = useRef<FileSystem.DownloadResumable | null>(null);
@@ -69,24 +64,37 @@ export function useLlama(): UseLlamaResult {
 
   // On mount: if context already in memory → ready; else check disk
   useEffect(() => {
-    if (!isLlamaAvailable) return;
     if (sharedCtx) { setStatus('ready'); return; }
     (async () => {
       try {
         const info = await FileSystem.getInfoAsync(modelPath());
         if (!info.exists || (info as any).size < 100_000_000) return;
+        // Model on disk — load it (this is the first access, so .so loads here)
+        const m = getLlamaModule();
+        if (!m) { setStatus('requires_build'); return; }
         if (!mountedRef.current) return;
         setStatus('loading_model');
-        await loadCtx();
+        sharedCtx = await m.initLlama!(
+          { model: modelPath(), n_ctx: 2048, n_threads: 4, n_gpu_layers: 0 },
+          () => {},
+        );
         if (mountedRef.current) setStatus('ready');
       } catch {
-        // Corrupted or incomplete file — let user re-download
+        // Corrupted file or module unavailable — let user re-download
       }
     })();
   }, []);
 
   const download = useCallback(() => {
-    if (!isLlamaAvailable || (status !== 'idle' && status !== 'error')) return;
+    if (status !== 'idle' && status !== 'error') return;
+
+    // First access to llama.rn — .so loads here, not at app startup
+    const m = getLlamaModule();
+    if (!m) {
+      setStatus('requires_build');
+      return;
+    }
+
     setStatus('downloading');
     setProgress(0);
     setErrorMessage(null);
@@ -107,7 +115,10 @@ export function useLlama(): UseLlamaResult {
       .then(async () => {
         if (!mountedRef.current) return;
         setStatus('loading_model');
-        await loadCtx();
+        sharedCtx = await m.initLlama!(
+          { model: modelPath(), n_ctx: 2048, n_threads: 4, n_gpu_layers: 0 },
+          () => {},
+        );
         if (mountedRef.current) setStatus('ready');
       })
       .catch((e: unknown) => {

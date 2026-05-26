@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "cover",
@@ -18,10 +17,14 @@
         "backgroundColor": "#100828"
       },
       "package": "com.peakwise.app",
-      "versionCode": 1
+      "versionCode": 1,
+      "newArchEnabled": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "ios": {
+      "bundleIdentifier": "com.peakwise.app"
     }
   }
 }
