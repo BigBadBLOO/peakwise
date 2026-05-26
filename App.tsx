@@ -1,49 +1,63 @@
 import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { View, Text, ActivityIndicator, StyleSheet, ScrollView } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
-import { SettingsProvider } from './src/context/SettingsContext';
-import { RootNavigator } from './src/navigation/RootNavigator';
-import { UpdateChecker } from './src/components/UpdateChecker';
-import { ErrorBoundary } from './src/components/ErrorBoundary';
 
-// Keep splash visible while JS loads
-SplashScreen.preventAutoHideAsync().catch(() => {});
+type State = { status: 'loading' } | { status: 'ready' } | { status: 'error'; message: string };
+
+let MainApp: React.ComponentType | null = null;
 
 export default function App() {
-  const [ready, setReady] = useState(false);
+  const [state, setState] = useState<State>({ status: 'loading' });
 
   useEffect(() => {
-    // Small delay to let providers mount, then hide splash
-    const t = setTimeout(async () => {
-      setReady(true);
-      await SplashScreen.hideAsync().catch(() => {});
-    }, 100);
-    return () => clearTimeout(t);
+    (async () => {
+      try {
+        // Dynamic require keeps native module errors catchable
+        const { AppRoot } = require('./src/AppRoot');
+        MainApp = AppRoot;
+        setState({ status: 'ready' });
+      } catch (e: any) {
+        setState({ status: 'error', message: String(e?.message ?? e) });
+      } finally {
+        await SplashScreen.hideAsync().catch(() => {});
+      }
+    })();
   }, []);
 
-  if (!ready) {
+  if (state.status === 'loading') {
     return (
-      <View style={{ flex: 1, backgroundColor: '#100828', alignItems: 'center', justifyContent: 'center' }}>
+      <View style={s.center}>
         <ActivityIndicator color="#7c6af7" size="large" />
+        <Text style={s.loadingText}>Загрузка...</Text>
       </View>
     );
   }
 
-  return (
-    <ErrorBoundary>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
-          <SettingsProvider>
-            <NavigationContainer>
-              <UpdateChecker />
-              <RootNavigator />
-            </NavigationContainer>
-          </SettingsProvider>
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-    </ErrorBoundary>
-  );
+  if (state.status === 'error') {
+    return (
+      <View style={s.errorContainer}>
+        <Text style={s.errorTitle}>Ошибка запуска</Text>
+        <ScrollView>
+          <Text style={s.errorText}>{state.message}</Text>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (!MainApp) return null;
+  return <MainApp />;
 }
+
+const s = StyleSheet.create({
+  center: {
+    flex: 1, backgroundColor: '#100828',
+    alignItems: 'center', justifyContent: 'center', gap: 16,
+  },
+  loadingText: { color: '#7c6af7', fontSize: 16 },
+  errorContainer: {
+    flex: 1, backgroundColor: '#1a0000',
+    padding: 24, paddingTop: 60,
+  },
+  errorTitle: { color: '#ff6b6b', fontSize: 20, fontWeight: '700', marginBottom: 16 },
+  errorText: { color: '#ffaaaa', fontSize: 13, fontFamily: 'monospace' },
+});
