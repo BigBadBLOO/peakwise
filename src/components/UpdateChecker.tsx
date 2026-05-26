@@ -1,30 +1,32 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Alert } from 'react-native';
-import { checkForUpdate, openDownloadPage, UpdateInfo } from '../services/updates';
+import { checkForUpdate, markUpdateSeen, openDownloadPage } from '../services/updates';
 
 export function UpdateChecker() {
-  const [update, setUpdate] = useState<UpdateInfo | null>(null);
-
   useEffect(() => {
     checkForUpdate().then(info => {
-      if (info?.available) setUpdate(info);
+      if (!info?.available) return;
+
+      Alert.alert(
+        'Доступно обновление',
+        `Версия ${info.latestTag}\n\n${info.releaseNotes.slice(0, 200)}`,
+        [
+          {
+            text: 'Позже',
+            style: 'cancel',
+            onPress: () => markUpdateSeen(info.latestTag),
+          },
+          {
+            text: 'Скачать APK',
+            onPress: () => {
+              markUpdateSeen(info.latestTag);
+              openDownloadPage(info.downloadUrl);
+            },
+          },
+        ],
+      );
     });
   }, []);
-
-  useEffect(() => {
-    if (!update) return;
-    Alert.alert(
-      'Доступно обновление',
-      `Версия ${update.latestVersion}\n\n${update.releaseNotes.slice(0, 200)}`,
-      [
-        { text: 'Позже', style: 'cancel' },
-        {
-          text: 'Скачать APK',
-          onPress: () => openDownloadPage(update.downloadUrl),
-        },
-      ],
-    );
-  }, [update]);
 
   return null;
 }

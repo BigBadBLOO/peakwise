@@ -7,6 +7,8 @@ import {
   FlatList,
   Alert,
   ActivityIndicator,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -50,6 +52,8 @@ function DecksListScreen({ navigation }: any) {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [stats, setStats] = useState<Record<string, { total: number; due: number }>>({});
   const [loading, setLoading] = useState(true);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [deckName, setDeckName] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -68,12 +72,16 @@ function DecksListScreen({ navigation }: any) {
     return unsub;
   }, [navigation, load]);
 
-  const addDeck = () => {
-    Alert.prompt('Новая колода', 'Название колоды:', async (name) => {
-      if (!name?.trim()) return;
-      await createDeck(name.trim());
-      load();
-    });
+  const openAdd = () => {
+    setDeckName('');
+    setModalVisible(true);
+  };
+
+  const saveNewDeck = async () => {
+    if (!deckName.trim()) return;
+    await createDeck(deckName.trim());
+    setModalVisible(false);
+    load();
   };
 
   const removeDeck = (deck: Deck) => {
@@ -137,11 +145,41 @@ function DecksListScreen({ navigation }: any) {
           );
         }}
       />
+
       <View style={s.fab}>
-        <TouchableOpacity style={s.fabBtn} onPress={addDeck}>
+        <TouchableOpacity style={s.fabBtn} onPress={openAdd}>
           <Text style={s.fabText}>+ Новая колода</Text>
         </TouchableOpacity>
       </View>
+
+      <Modal visible={modalVisible} transparent animationType="slide">
+        <View style={s.overlay}>
+          <View style={s.modal}>
+            <Text style={s.modalTitle}>Новая колода</Text>
+            <TextInput
+              style={s.input}
+              placeholder="Название колоды"
+              placeholderTextColor="#555"
+              value={deckName}
+              onChangeText={setDeckName}
+              autoFocus
+              onSubmitEditing={saveNewDeck}
+            />
+            <View style={s.modalBtns}>
+              <TouchableOpacity style={s.cancelBtn} onPress={() => setModalVisible(false)}>
+                <Text style={s.cancelText}>Отмена</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.saveBtn, !deckName.trim() && s.saveBtnDisabled]}
+                onPress={saveNewDeck}
+                disabled={!deckName.trim()}
+              >
+                <Text style={s.saveText}>Создать</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -191,4 +229,34 @@ const s = StyleSheet.create({
     alignItems: 'center',
   },
   fabText: { color: '#fff', fontWeight: '600', fontSize: 16 },
+  overlay: { flex: 1, backgroundColor: '#000000aa', justifyContent: 'flex-end' },
+  modal: {
+    backgroundColor: '#1e1e30',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    gap: 12,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: '#fff' },
+  input: {
+    backgroundColor: '#0f0f1a',
+    borderRadius: 10,
+    padding: 14,
+    color: '#fff',
+    fontSize: 16,
+    borderWidth: 1,
+    borderColor: '#2d2d4e',
+  },
+  modalBtns: { flexDirection: 'row', gap: 10 },
+  cancelBtn: {
+    flex: 1, backgroundColor: '#2d2d4e', borderRadius: 10,
+    padding: 14, alignItems: 'center',
+  },
+  cancelText: { color: '#aaa', fontWeight: '600' },
+  saveBtn: {
+    flex: 1, backgroundColor: '#7c6af7', borderRadius: 10,
+    padding: 14, alignItems: 'center',
+  },
+  saveBtnDisabled: { opacity: 0.4 },
+  saveText: { color: '#fff', fontWeight: '600' },
 });

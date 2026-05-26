@@ -1,28 +1,15 @@
 import { Linking } from 'react-native';
-import { APP_VERSION } from '../constants/version';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const RELEASES_API = 'https://api.github.com/repos/BigBadBLOO/peakwise/releases/latest';
 const RELEASES_PAGE = 'https://github.com/BigBadBLOO/peakwise/releases/latest';
+const LAST_SEEN_TAG_KEY = 'update:last_seen_tag';
 
 export interface UpdateInfo {
   available: boolean;
-  latestVersion: string;
+  latestTag: string;
   downloadUrl: string;
   releaseNotes: string;
-}
-
-function parseVersion(v: string): number[] {
-  return v.replace(/^v/, '').split('.').map(Number);
-}
-
-function isNewer(latest: string, current: string): boolean {
-  const a = parseVersion(latest);
-  const b = parseVersion(current);
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    const diff = (a[i] ?? 0) - (b[i] ?? 0);
-    if (diff !== 0) return diff > 0;
-  }
-  return false;
 }
 
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
@@ -33,22 +20,28 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     if (!res.ok) return null;
 
     const release = await res.json();
-    const latestVersion: string = release.tag_name ?? '';
-    if (!latestVersion) return null;
+    const latestTag: string = release.tag_name ?? '';
+    if (!latestTag) return null;
+
+    const lastSeen = await AsyncStorage.getItem(LAST_SEEN_TAG_KEY);
 
     const apkAsset = (release.assets as any[]).find((a: any) =>
       a.name.endsWith('.apk'),
     );
 
     return {
-      available: isNewer(latestVersion, APP_VERSION),
-      latestVersion,
+      available: latestTag !== lastSeen,
+      latestTag,
       downloadUrl: apkAsset?.browser_download_url ?? RELEASES_PAGE,
       releaseNotes: release.body ?? '',
     };
   } catch {
     return null;
   }
+}
+
+export async function markUpdateSeen(tag: string) {
+  await AsyncStorage.setItem(LAST_SEEN_TAG_KEY, tag);
 }
 
 export function openDownloadPage(url: string) {

@@ -40,6 +40,8 @@ export function TabNavigator() {
             component={MODULE_SCREENS[module.id]}
             options={{
               title: module.label,
+              // flashcards has its own nested stack with headers
+              headerShown: module.id !== 'flashcards',
               tabBarIcon: ({ color }) => (
                 <Text style={{ fontSize: 20, color }}>{module.icon}</Text>
               ),
