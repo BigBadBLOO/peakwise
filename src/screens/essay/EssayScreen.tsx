@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, ActivityIndicator, Alert,
@@ -13,14 +13,15 @@ import { addXp, ESSAY_XP } from '../../db/stats';
 import { saveEssaySession, getEssaySessions, EssaySession } from '../../db/essays';
 import { useLlama, LlamaStatus } from '../../hooks/useLlama';
 
+type Mode = 'retelling' | 'essay' | 'both';
+
 type Stage =
+  | 'mode-select'
   | 'level-select'
   | 'reading'
   | 'writing-retelling'
-  | 'checking-retelling'
   | 'feedback-retelling'
   | 'writing-essay'
-  | 'checking-essay'
   | 'feedback-essay';
 
 const LEVELS = [
@@ -40,13 +41,20 @@ const TOPICS = [
   { id: 'tech',    label: 'Технологии', emoji: '💻' },
 ];
 
+const MODES: { id: Mode; icon: string; label: string; desc: string; color: string }[] = [
+  { id: 'retelling', icon: '📖', label: 'Изложение',        desc: 'Прочти текст и перескажи своими словами', color: '#5B47E0' },
+  { id: 'essay',     icon: '✏️', label: 'Сочинение',        desc: 'Напиши на заданную тему',                 color: '#3CA86E' },
+  { id: 'both',      icon: '🎯', label: 'Изложение + Сочинение', desc: 'Полный урок: оба задания подряд',    color: '#EC8B2F' },
+];
+
 export function EssayScreen() {
   const { settings } = useSettings();
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const llama = useLlama();
 
-  const [stage, setStage] = useState<Stage>('level-select');
+  const [mode, setMode] = useState<Mode>('retelling');
+  const [stage, setStage] = useState<Stage>('mode-select');
   const [level, setLevel] = useState(3);
   const [topic, setTopic] = useState('any');
   const [sourceText, setSourceText] = useState('');
@@ -74,18 +82,22 @@ export function EssayScreen() {
 
   const checkAI = (): boolean => {
     if (llama.isReady || settings.claudeApiKey) return true;
-    Alert.alert(
-      'Нужен AI',
-      'Загрузи модель на устройство (кнопка выше) или укажи API-ключ Claude в настройках.',
-    );
+    Alert.alert('Нужен AI', 'Загрузи модель на устройство или укажи API-ключ Claude в настройках.');
     return false;
   };
 
   const aiGenerate = async (system: string, user: string, maxTokens = 600): Promise<string> => {
-    if (llama.isReady) {
-      return llama.generate(system, user, maxTokens);
-    }
+    if (llama.isReady) return llama.generate(system, user, maxTokens);
     return claudeChat(settings.claudeApiKey, [{ role: 'user', content: user }], system);
+  };
+
+  const aiGenerateText = async (level: number, topicDesc: string): Promise<string> => {
+    const user = `Напиши текст для изложения. Уровень сложности: ${level}/5${topicDesc}.\nТекст:`;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const text = await aiGenerate(SYSTEM_GENERATE, user, 700);
+      if (isValidGeneratedText(text, level)) return text;
+    }
+    throw new Error('Не удалось сгенерировать текст. Попробуй ещё раз.');
   };
 
   const generateText = async () => {
@@ -93,11 +105,7 @@ export function EssayScreen() {
     setLoading(true);
     try {
       const topicDesc = topic !== 'any' ? `, тема: ${TOPICS.find(t => t.id === topic)?.label ?? topic}` : '';
-      const text = await aiGenerate(
-        SYSTEM_GENERATE,
-        `Уровень сложности: ${level}/5${topicDesc}`,
-        700,
-      );
+      const text = await aiGenerateText(level, topicDesc);
       setSourceText(text);
       setStage('reading');
     } catch (e: any) {
@@ -108,8 +116,7 @@ export function EssayScreen() {
   };
 
   const checkRetelling = async () => {
-    if (!retellingInput.trim()) return;
-    if (!checkAI()) return;
+    if (!retellingInput.trim() || !checkAI()) return;
     setLoading(true);
     try {
       const result = await aiGenerate(
@@ -134,11 +141,7 @@ export function EssayScreen() {
     setLoading(true);
     try {
       const topicDesc = topic !== 'any' ? `, тема: ${TOPICS.find(t => t.id === topic)?.label ?? topic}` : '';
-      const result = await aiGenerate(
-        SYSTEM_ESSAY_TOPIC,
-        `Уровень сложности: ${level}/5${topicDesc}`,
-        100,
-      );
+      const result = await aiGenerate(SYSTEM_ESSAY_TOPIC, `Уровень сложности: ${level}/5${topicDesc}`, 100);
       setEssayTopic(result);
       setStage('writing-essay');
     } catch (e: any) {
@@ -149,8 +152,7 @@ export function EssayScreen() {
   };
 
   const checkEssay = async () => {
-    if (!essayInput.trim()) return;
-    if (!checkAI()) return;
+    if (!essayInput.trim() || !checkAI()) return;
     setLoading(true);
     try {
       const result = await aiGenerate(
@@ -171,162 +173,176 @@ export function EssayScreen() {
   };
 
   const reset = () => {
-    setStage('level-select');
+    setStage('mode-select');
     setSourceText(''); setEssayTopic(''); setRetellingInput('');
     setEssayInput(''); setFeedback('');
   };
 
+  const selectMode = (m: Mode) => { setMode(m); setStage('level-select'); };
+
   const isWorking = loading || llama.status === 'inferring';
+
+  // After retelling feedback: go to essay if mode=both, else reset
+  const afterRetelling = mode === 'both' ? generateEssayTopic : reset;
+  const afterRetellingLabel = mode === 'both' ? 'Перейти к сочинению →' : 'Начать заново';
+
+  // Generate button action and label for level-select
+  const onGenerate = mode === 'essay' ? generateEssayTopic : generateText;
+  const generateLabel = mode === 'essay' ? 'Придумать тему' : 'Сгенерировать текст';
 
   return (
     <SafeAreaView style={s.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-        {stage === 'level-select' && (
-          <LevelSelect level={level} topic={topic}
-            onLevelChange={setLevel} onTopicChange={setTopic}
-            onGenerate={generateText} loading={isWorking}
-            llamaStatus={llama.status} llamaProgress={llama.progress}
-            llamaError={llama.errorMessage}
-            onDownload={llama.download}
-            hasApiKey={!!settings.claudeApiKey}
+
+        {stage === 'mode-select' && (
+          <ModeSelect
+            onSelect={selectMode}
             history={history} historyDone={historyDone}
             onLoadMore={() => loadHistory(historyOffset)}
-            s={s} colors={colors} />
+            llamaStatus={llama.status} llamaProgress={llama.progress}
+            llamaError={llama.errorMessage} onDownload={llama.download}
+            s={s} colors={colors}
+          />
         )}
+
+        {stage === 'level-select' && (
+          <LevelSelect
+            mode={mode} level={level} topic={topic}
+            onBack={() => setStage('mode-select')}
+            onLevelChange={setLevel} onTopicChange={setTopic}
+            onGenerate={onGenerate} generateLabel={generateLabel}
+            loading={isWorking} s={s} colors={colors}
+          />
+        )}
+
         {stage === 'reading' && (
           <Reading text={sourceText} onDone={() => setStage('writing-retelling')} s={s} />
         )}
+
         {stage === 'writing-retelling' && (
           <Writing title="Напиши изложение" hint="Перескажи прочитанный текст своими словами"
             value={retellingInput} onChange={setRetellingInput}
             onSubmit={checkRetelling} loading={isWorking} s={s} colors={colors} />
         )}
+
         {stage === 'feedback-retelling' && (
           <Feedback title="Обратная связь" text={feedback}
-            onNext={generateEssayTopic} nextLabel="Перейти к сочинению →"
+            onNext={afterRetelling} nextLabel={afterRetellingLabel}
             loading={isWorking} s={s} />
         )}
+
         {stage === 'writing-essay' && (
           <Writing title={`Сочинение: ${essayTopic}`} hint="Напиши своё сочинение по теме"
             value={essayInput} onChange={setEssayInput}
             onSubmit={checkEssay} loading={isWorking} s={s} colors={colors} />
         )}
-        {(stage === 'checking-retelling' || stage === 'checking-essay') && (
-          <View style={s.center}>
-            <ActivityIndicator color={colors.accent} size="large" />
-            <Text style={s.loadingText}>Проверяю...</Text>
-          </View>
-        )}
+
         {stage === 'feedback-essay' && (
           <Feedback title="Обратная связь" text={feedback}
             onNext={reset} nextLabel="Начать заново"
             loading={false} s={s} />
         )}
+
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// ── Model banner ─────────────────────────────────────────────────────────────
+// ── Mode select ───────────────────────────────────────────────────────────────
 
-function ModelBanner({ status, progress, errorMessage, onDownload, s, colors }: {
-  status: LlamaStatus; progress: number; errorMessage: string | null;
+function ModeSelect({ onSelect, history, historyDone, onLoadMore,
+  llamaStatus, llamaProgress, llamaError, onDownload, s, colors }: {
+  onSelect: (m: Mode) => void;
+  history: EssaySession[]; historyDone: boolean; onLoadMore: () => void;
+  llamaStatus: LlamaStatus; llamaProgress: number; llamaError: string | null;
   onDownload: () => void; s: any; colors: Colors;
 }) {
-  if (status === 'ready') return null;
-
-  if (status === 'requires_build') {
-    return (
-      <View style={s.banner}>
-        <Text style={s.bannerText}>Для AI на устройстве нужна нативная сборка (expo run:android / expo run:ios)</Text>
-      </View>
-    );
-  }
-
-  if (status === 'downloading') {
-    const pct = Math.round(progress);
-    return (
-      <View style={s.banner}>
-        <View style={s.bannerRow}>
-          <Text style={s.bannerTitle}>Загружаю модель… {pct}%</Text>
-          <Text style={s.bannerSub}>~1.1 ГБ · не закрывай приложение</Text>
-        </View>
-        <View style={s.progressTrack}>
-          <View style={[s.progressFill, { width: `${pct}%` as any }]} />
-        </View>
-      </View>
-    );
-  }
-
-  if (status === 'loading_model') {
-    return (
-      <View style={s.banner}>
-        <ActivityIndicator size="small" color={colors.mint} />
-        <Text style={s.bannerTitle}>Загружаю модель в память…</Text>
-      </View>
-    );
-  }
-
-  // idle or error
   return (
-    <View style={s.bannerDownload}>
-      <View style={s.bannerDownloadInfo}>
-        <Text style={s.bannerTitle}>AI на устройстве</Text>
-        <Text style={s.bannerSub}>Qwen2.5-1.5B · ~1.1 ГБ · бесплатно</Text>
-        {errorMessage && <Text style={s.bannerError}>{errorMessage}</Text>}
+    <View>
+      <LinearGradient
+        colors={['#2A2249', '#5B47E0', '#7B5FE8']}
+        style={s.hero} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+      >
+        <View style={s.heroIconRow}>
+          <Icon name="book" size={20} color="#fff" />
+          <Text style={s.heroTag}>Изложение · AI</Text>
+        </View>
+        <Text style={s.heroTitle}>Что будем{'\n'}делать сегодня?</Text>
+        <Text style={s.heroDesc}>Выбери формат урока — AI подготовит задание под твой уровень.</Text>
+      </LinearGradient>
+
+      <View style={s.section}>
+        <ModelBanner status={llamaStatus} progress={llamaProgress}
+          errorMessage={llamaError} onDownload={onDownload} s={s} colors={colors} />
+
+        {MODES.map(m => (
+          <TouchableOpacity key={m.id} style={s.modeCard} onPress={() => onSelect(m.id)} activeOpacity={0.82}>
+            <View style={[s.modeIcon, { backgroundColor: m.color + '22' }]}>
+              <Text style={s.modeEmoji}>{m.icon}</Text>
+            </View>
+            <View style={s.modeInfo}>
+              <Text style={s.modeLabel}>{m.label}</Text>
+              <Text style={s.modeDesc}>{m.desc}</Text>
+            </View>
+            <Icon name="chevron-right" size={18} color={colors.text4} />
+          </TouchableOpacity>
+        ))}
       </View>
-      <TouchableOpacity style={s.bannerBtn} onPress={onDownload} activeOpacity={0.85}>
-        <Icon name="arrow-down" size={14} color="#fff" />
-        <Text style={s.bannerBtnText}>{status === 'error' ? 'Повтор' : 'Скачать'}</Text>
-      </TouchableOpacity>
+
+      {history.length > 0 && (
+        <View style={s.section}>
+          <Text style={[s.sectionLabel, { marginBottom: 10 }]}>История</Text>
+          {history.map(item => (
+            <View key={item.id} style={s.historyCard}>
+              <View style={s.historyCardHeader}>
+                <Text style={s.historyType}>{item.type === 'retelling' ? 'Изложение' : 'Сочинение'}</Text>
+                <Text style={s.historyDate}>
+                  {new Date(item.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                </Text>
+              </View>
+              <Text style={s.historySource} numberOfLines={2}>{item.source_text}</Text>
+              <Text style={s.historyFeedback} numberOfLines={3}>{item.feedback}</Text>
+            </View>
+          ))}
+          {!historyDone && (
+            <TouchableOpacity style={s.loadMoreBtn} onPress={onLoadMore} activeOpacity={0.75}>
+              <Text style={s.loadMoreText}>Загрузить ещё</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
   );
 }
 
-// ── Sub-screens ───────────────────────────────────────────────────────────────
+// ── Level select ──────────────────────────────────────────────────────────────
 
-function LevelSelect({ level, topic, onLevelChange, onTopicChange, onGenerate, loading,
-  llamaStatus, llamaProgress, llamaError, onDownload, hasApiKey,
-  history, historyDone, onLoadMore, s, colors }: {
-  level: number; topic: string;
+function LevelSelect({ mode, level, topic, onBack, onLevelChange, onTopicChange,
+  onGenerate, generateLabel, loading, s, colors }: {
+  mode: Mode; level: number; topic: string;
+  onBack: () => void;
   onLevelChange: (v: number) => void; onTopicChange: (v: string) => void;
-  onGenerate: () => void; loading: boolean;
-  llamaStatus: LlamaStatus; llamaProgress: number; llamaError: string | null;
-  onDownload: () => void; hasApiKey: boolean;
-  history: EssaySession[]; historyDone: boolean; onLoadMore: () => void;
+  onGenerate: () => void; generateLabel: string; loading: boolean;
   s: any; colors: Colors;
 }) {
   const current = LEVELS[level - 1];
-  const aiReady = llamaStatus === 'ready';
-  const generateLabel = aiReady
-    ? 'Сгенерировать текст'
-    : hasApiKey ? 'Сгенерировать текст (Cloud)' : 'Сгенерировать текст';
+  const modeInfo = MODES.find(m => m.id === mode)!;
 
   return (
     <View>
       <LinearGradient
         colors={['#2A2249', '#5B47E0', '#7B5FE8']}
-        style={s.hero}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        style={s.hero} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
       >
-        <View style={s.heroIconRow}>
-          <Icon name="book" size={20} color="#fff" strokeWidth={2} />
-          <Text style={s.heroTag}>Изложение · AI</Text>
-        </View>
-        <Text style={s.heroTitle}>Перескажи текст{'\n'}своими словами</Text>
-        <Text style={s.heroDesc}>AI сгенерирует текст под твой уровень. Прочти, перескажи — получи разбор.</Text>
+        <TouchableOpacity style={s.backRow} onPress={onBack} activeOpacity={0.7}>
+          <Icon name="chevron-left" size={18} color="rgba(255,255,255,0.8)" />
+          <Text style={s.backText}>Назад</Text>
+        </TouchableOpacity>
+        <Text style={s.heroTitle}>{modeInfo.label}</Text>
+        <Text style={s.heroDesc}>{modeInfo.desc}</Text>
       </LinearGradient>
 
       <View style={s.section}>
-        {/* Model banner — hidden when ready */}
-        <ModelBanner
-          status={llamaStatus} progress={llamaProgress}
-          errorMessage={llamaError} onDownload={onDownload}
-          s={s} colors={colors}
-        />
-
-        {/* Level grid */}
         <View style={s.sectionHeader}>
           <Text style={s.sectionLabel}>Уровень</Text>
           <Text style={[s.sectionValue, { color: current.color }]}>{current.words} слов</Text>
@@ -349,7 +365,6 @@ function LevelSelect({ level, topic, onLevelChange, onTopicChange, onGenerate, l
           <Text style={s.levelDescSub}>{current.words} слов</Text>
         </View>
 
-        {/* Topics */}
         <Text style={[s.sectionLabel, { marginTop: 16, marginBottom: 10 }]}>Тема</Text>
         <View style={s.topicsWrap}>
           {TOPICS.map(t => (
@@ -367,48 +382,74 @@ function LevelSelect({ level, topic, onLevelChange, onTopicChange, onGenerate, l
 
         <TouchableOpacity
           style={[s.btn, loading && s.btnDisabled]}
-          onPress={onGenerate}
-          disabled={loading}
-          activeOpacity={0.85}
+          onPress={onGenerate} disabled={loading} activeOpacity={0.85}
         >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <>
-              <Icon name="wand" size={18} color="#fff" strokeWidth={1.75} />
-              <Text style={s.btnText}>{generateLabel}</Text>
-            </>
-          )}
+          {loading
+            ? <ActivityIndicator color="#fff" />
+            : <><Icon name="wand" size={18} color="#fff" /><Text style={s.btnText}>{generateLabel}</Text></>
+          }
         </TouchableOpacity>
       </View>
-
-      {history.length > 0 && (
-        <View style={s.section}>
-          <Text style={[s.sectionLabel, { marginBottom: 10 }]}>История</Text>
-          {history.map(item => (
-            <View key={item.id} style={s.historyCard}>
-              <View style={s.historyCardHeader}>
-                <Text style={s.historyType}>
-                  {item.type === 'retelling' ? 'Изложение' : 'Сочинение'}
-                </Text>
-                <Text style={s.historyDate}>
-                  {new Date(item.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
-                </Text>
-              </View>
-              <Text style={s.historySource} numberOfLines={2}>{item.source_text}</Text>
-              <Text style={s.historyFeedback} numberOfLines={3}>{item.feedback}</Text>
-            </View>
-          ))}
-          {!historyDone && (
-            <TouchableOpacity style={s.loadMoreBtn} onPress={onLoadMore} activeOpacity={0.75}>
-              <Text style={s.loadMoreText}>Загрузить ещё</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
     </View>
   );
 }
+
+// ── Model banner ──────────────────────────────────────────────────────────────
+
+function ModelBanner({ status, progress, errorMessage, onDownload, s, colors }: {
+  status: LlamaStatus; progress: number; errorMessage: string | null;
+  onDownload: () => void; s: any; colors: Colors;
+}) {
+  if (status === 'ready') return null;
+
+  if (status === 'requires_build') {
+    return (
+      <View style={s.banner}>
+        <Text style={s.bannerText}>Для AI на устройстве нужна нативная сборка (expo run:android)</Text>
+      </View>
+    );
+  }
+
+  if (status === 'downloading') {
+    const pct = Math.round(progress * 100);
+    return (
+      <View style={s.banner}>
+        <View style={s.bannerRow}>
+          <Text style={s.bannerTitle}>Загружаю модель… {pct}%</Text>
+          <Text style={s.bannerSub}>~1.1 ГБ · не закрывай приложение</Text>
+        </View>
+        <View style={s.progressTrack}>
+          <View style={[s.progressFill, { width: `${pct}%` as any }]} />
+        </View>
+      </View>
+    );
+  }
+
+  if (status === 'loading_model') {
+    return (
+      <View style={s.banner}>
+        <ActivityIndicator size="small" color={colors.mint} />
+        <Text style={s.bannerTitle}>Загружаю модель в память…</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={s.bannerDownload}>
+      <View style={s.bannerDownloadInfo}>
+        <Text style={s.bannerTitle}>AI на устройстве</Text>
+        <Text style={s.bannerSub}>Qwen2.5-1.5B · ~1.1 ГБ · бесплатно</Text>
+        {errorMessage && <Text style={s.bannerError}>{errorMessage}</Text>}
+      </View>
+      <TouchableOpacity style={s.bannerBtn} onPress={onDownload} activeOpacity={0.85}>
+        <Icon name="arrow-down" size={14} color="#fff" />
+        <Text style={s.bannerBtnText}>{status === 'error' ? 'Повтор' : 'Скачать'}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ── Reading / Writing / Feedback ──────────────────────────────────────────────
 
 function Reading({ text, onDone, s }: { text: string; onDone: () => void; s: any }) {
   return (
@@ -433,19 +474,13 @@ function Writing({ title, hint, value, onChange, onSubmit, loading, s, colors }:
       <Text style={s.stageTitle}>{title}</Text>
       <Text style={s.stageHint}>{hint}</Text>
       <TextInput
-        style={s.textarea}
-        multiline
-        value={value}
-        onChangeText={onChange}
-        placeholder="Начни писать здесь..."
-        placeholderTextColor={colors.text4}
+        style={s.textarea} multiline value={value} onChangeText={onChange}
+        placeholder="Начни писать здесь..." placeholderTextColor={colors.text4}
         textAlignVertical="top"
       />
       <TouchableOpacity
         style={[s.btn, (!value.trim() || loading) && s.btnDisabled]}
-        onPress={onSubmit}
-        disabled={!value.trim() || loading}
-        activeOpacity={0.85}
+        onPress={onSubmit} disabled={!value.trim() || loading} activeOpacity={0.85}
       >
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Проверить →</Text>}
       </TouchableOpacity>
@@ -468,9 +503,7 @@ function Feedback({ title, text, onNext, nextLabel, loading, s }: {
       </View>
       <TouchableOpacity
         style={[s.btn, loading && s.btnDisabled]}
-        onPress={onNext}
-        disabled={loading}
-        activeOpacity={0.85}
+        onPress={onNext} disabled={loading} activeOpacity={0.85}
       >
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>{nextLabel}</Text>}
       </TouchableOpacity>
@@ -491,10 +524,24 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   heroTag: { fontSize: 11, fontWeight: '800', color: 'rgba(255,255,255,0.9)', letterSpacing: 0.5, textTransform: 'uppercase' },
   heroTitle: { fontSize: 30, fontWeight: '800', color: '#fff', lineHeight: 38, marginBottom: 10, letterSpacing: -0.5 },
   heroDesc: { fontSize: 14, color: 'rgba(255,255,255,0.8)', lineHeight: 20 },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 14 },
+  backText: { fontSize: 14, color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
   section: { padding: 20 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 },
   sectionLabel: { fontSize: 13, fontWeight: '800', color: c.text2, textTransform: 'uppercase', letterSpacing: 0.5 },
   sectionValue: { fontSize: 13, fontWeight: '700' },
+  // Mode cards
+  modeCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    backgroundColor: c.surface, borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: c.border, marginBottom: 10,
+  },
+  modeIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  modeEmoji: { fontSize: 22 },
+  modeInfo: { flex: 1 },
+  modeLabel: { fontSize: 16, fontWeight: '800', color: c.text, marginBottom: 3 },
+  modeDesc: { fontSize: 13, color: c.text3, lineHeight: 18 },
+  // Level grid
   levelGrid: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   levelCell: {
     flex: 1, aspectRatio: 1, borderRadius: 12,
@@ -544,7 +591,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   feedbackText: { color: c.successText, fontSize: 15, lineHeight: 24 },
   center: { alignItems: 'center', paddingVertical: 60, gap: 16 },
   loadingText: { color: c.text3, fontSize: 16 },
-
   // Model banner
   banner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
@@ -563,18 +609,14 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   },
   bannerDownloadInfo: { flex: 1, marginRight: 12 },
   bannerBtn: {
-    backgroundColor: c.mint, borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: 9,
+    backgroundColor: c.mint, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9,
     flexDirection: 'row', alignItems: 'center', gap: 5,
   },
   bannerBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  progressTrack: {
-    height: 4, backgroundColor: c.border, borderRadius: 2, marginTop: 8, overflow: 'hidden',
-  },
+  progressTrack: { height: 4, backgroundColor: c.border, borderRadius: 2, marginTop: 8, overflow: 'hidden' },
   progressFill: { height: 4, backgroundColor: c.mint, borderRadius: 2 },
-  historyCard: {
-    backgroundColor: c.surface2, borderRadius: 14, padding: 14, marginBottom: 10,
-  },
+  // History
+  historyCard: { backgroundColor: c.surface2, borderRadius: 14, padding: 14, marginBottom: 10 },
   historyCardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   historyType: { fontSize: 13, fontWeight: '700', color: c.accent },
   historyDate: { fontSize: 12, color: c.text4 },
@@ -586,12 +628,33 @@ const makeStyles = (c: Colors) => StyleSheet.create({
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
 
-const SYSTEM_GENERATE = `Ты учитель русского языка. Сгенерируй текст для изложения.
-Уровень 1 — очень простой (80-120 слов). Уровень 2 — простой (120-180 слов).
-Уровень 3 — средний (180-280 слов). Уровень 4 — сложный (280-400 слов).
-Уровень 5 — продвинутый (400+ слов).
-Если указана тема, сгенерируй текст по ней.
-Верни только сам текст без заголовков и пояснений.`;
+const BAD_PATTERNS = [
+  /добрый день/i, /как я могу помочь/i, /чем могу помочь/i,
+  /я.*ассистент/i, /я.*помощник/i, /я.*языковая модель/i,
+  /конечно.*помогу/i, /рад.*помочь/i,
+];
+
+function isValidGeneratedText(text: string, level: number): boolean {
+  const trimmed = text.trim();
+  const minWords = [40, 60, 90, 140, 200][level - 1] ?? 40;
+  if (trimmed.split(/\s+/).length < minWords) return false;
+  if (BAD_PATTERNS.some(p => p.test(trimmed))) return false;
+  return true;
+}
+
+const SYSTEM_GENERATE = `Ты — генератор учебных текстов для изложений. Твоя единственная задача: написать связный художественный или научно-популярный текст на заданном уровне сложности.
+
+Правила:
+- Пиши только сам текст, без приветствий, пояснений и заголовков
+- Не обращайся к пользователю
+- Не объясняй, что ты делаешь
+- Начинай текст сразу с первого предложения
+
+Уровень 1 — 80-120 слов, простые предложения.
+Уровень 2 — 120-180 слов, несложный язык.
+Уровень 3 — 180-280 слов, средняя сложность.
+Уровень 4 — 280-400 слов, богатый язык.
+Уровень 5 — 400+ слов, сложный литературный стиль.`;
 
 const SYSTEM_CHECK_RETELLING = `Ты учитель русского языка. Проверь изложение ученика.
 Дай подробную обратную связь:
