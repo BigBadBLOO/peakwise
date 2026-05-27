@@ -416,7 +416,7 @@ function ModelBanner({ status, progress, errorMessage, onDownload, s, colors }: 
       <View style={s.banner}>
         <View style={s.bannerRow}>
           <Text style={s.bannerTitle}>Загружаю модель… {pct}%</Text>
-          <Text style={s.bannerSub}>~1.1 ГБ · не закрывай приложение</Text>
+          <Text style={s.bannerSub}>~1.6 ГБ · не закрывай приложение</Text>
         </View>
         <View style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${pct}%` as any }]} />
@@ -438,7 +438,7 @@ function ModelBanner({ status, progress, errorMessage, onDownload, s, colors }: 
     <View style={s.bannerDownload}>
       <View style={s.bannerDownloadInfo}>
         <Text style={s.bannerTitle}>AI на устройстве</Text>
-        <Text style={s.bannerSub}>Qwen2.5-1.5B · ~1.1 ГБ · бесплатно</Text>
+        <Text style={s.bannerSub}>Gemma-2-2B · ~1.6 ГБ · бесплатно</Text>
         {errorMessage && <Text style={s.bannerError}>{errorMessage}</Text>}
       </View>
       <TouchableOpacity style={s.bannerBtn} onPress={onDownload} activeOpacity={0.85}>

@@ -21,7 +21,7 @@ export interface UseLlamaResult {
 }
 
 const MODEL_URL =
-  'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf';
+  'https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf';
 const MODEL_FILE = 'peakwise_model.gguf';
 const MIN_MODEL_BYTES = 100 * 1024 * 1024; // 100 MB sanity check
 
@@ -144,7 +144,7 @@ export function useLlama(): UseLlamaResult {
           { role: 'user', content: user },
         ],
         n_predict: maxTokens,
-        stop: ['<|im_end|>', '<|endoftext|>'],
+        stop: ['<end_of_turn>', '<eos>'],
       });
       return result.text ?? '';
     } finally {
