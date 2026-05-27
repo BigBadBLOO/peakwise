@@ -22,7 +22,8 @@ type Stage =
   | 'writing-retelling'
   | 'feedback-retelling'
   | 'writing-essay'
-  | 'feedback-essay';
+  | 'feedback-essay'
+  | 'history-detail';
 
 const LEVELS = [
   { value: 1, label: 'Очень просто', words: '80–120',  color: '#3CA86E' },
@@ -67,6 +68,7 @@ export function EssayScreen() {
   const [history, setHistory] = useState<EssaySession[]>([]);
   const [historyOffset, setHistoryOffset] = useState(0);
   const [historyDone, setHistoryDone] = useState(false);
+  const [selectedSession, setSelectedSession] = useState<EssaySession | null>(null);
   const PAGE = 3;
 
   const loadHistory = useCallback(async (offset: number, replace = false) => {
@@ -199,10 +201,15 @@ export function EssayScreen() {
             onSelect={selectMode}
             history={history} historyDone={historyDone}
             onLoadMore={() => loadHistory(historyOffset)}
+            onHistoryItem={item => { setSelectedSession(item); setStage('history-detail'); }}
             llamaStatus={llama.status} llamaProgress={llama.progress}
             llamaError={llama.errorMessage} onDownload={llama.download} onDelete={llama.deleteModel}
             s={s} colors={colors}
           />
+        )}
+
+        {stage === 'history-detail' && selectedSession && (
+          <HistoryDetail session={selectedSession} onBack={() => setStage('mode-select')} s={s} colors={colors} />
         )}
 
         {stage === 'level-select' && (
@@ -250,10 +257,11 @@ export function EssayScreen() {
 
 // ── Mode select ───────────────────────────────────────────────────────────────
 
-function ModeSelect({ onSelect, history, historyDone, onLoadMore,
+function ModeSelect({ onSelect, history, historyDone, onLoadMore, onHistoryItem,
   llamaStatus, llamaProgress, llamaError, onDownload, onDelete, s, colors }: {
   onSelect: (m: Mode) => void;
   history: EssaySession[]; historyDone: boolean; onLoadMore: () => void;
+  onHistoryItem: (item: EssaySession) => void;
   llamaStatus: LlamaStatus; llamaProgress: number; llamaError: string | null;
   onDownload: () => void; onDelete: () => void; s: any; colors: Colors;
 }) {
@@ -293,7 +301,7 @@ function ModeSelect({ onSelect, history, historyDone, onLoadMore,
         <View style={s.section}>
           <Text style={[s.sectionLabel, { marginBottom: 10 }]}>История</Text>
           {history.map(item => (
-            <View key={item.id} style={s.historyCard}>
+            <TouchableOpacity key={item.id} style={s.historyCard} onPress={() => onHistoryItem(item)} activeOpacity={0.8}>
               <View style={s.historyCardHeader}>
                 <Text style={s.historyType}>{item.type === 'retelling' ? 'Изложение' : 'Сочинение'}</Text>
                 <Text style={s.historyDate}>
@@ -302,7 +310,7 @@ function ModeSelect({ onSelect, history, historyDone, onLoadMore,
               </View>
               <Text style={s.historySource} numberOfLines={2}>{item.source_text}</Text>
               <Text style={s.historyFeedback} numberOfLines={3}>{item.feedback}</Text>
-            </View>
+            </TouchableOpacity>
           ))}
           {!historyDone && (
             <TouchableOpacity style={s.loadMoreBtn} onPress={onLoadMore} activeOpacity={0.75}>
@@ -454,6 +462,47 @@ function ModelBanner({ status, progress, errorMessage, onDownload, onDelete, s, 
         <Icon name="arrow-down" size={14} color="#fff" />
         <Text style={s.bannerBtnText}>{status === 'error' ? 'Повтор' : 'Скачать'}</Text>
       </TouchableOpacity>
+    </View>
+  );
+}
+
+// ── History detail ────────────────────────────────────────────────────────────
+
+function HistoryDetail({ session, onBack, s, colors }: {
+  session: EssaySession; onBack: () => void; s: any; colors: Colors;
+}) {
+  const date = new Date(session.created_at).toLocaleDateString('ru-RU', {
+    day: 'numeric', month: 'long', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+  const typeLabel = session.type === 'retelling' ? 'Изложение' : 'Сочинение';
+
+  return (
+    <View style={s.detailContainer}>
+      <TouchableOpacity style={s.backRow} onPress={onBack} activeOpacity={0.7}>
+        <Icon name="back" size={18} color={colors.accent} />
+        <Text style={[s.backText, { color: colors.accent }]}>Назад</Text>
+      </TouchableOpacity>
+
+      <View style={s.detailHeader}>
+        <Text style={s.detailType}>{typeLabel}</Text>
+        <Text style={s.detailDate}>{date}</Text>
+      </View>
+
+      <View style={s.detailSection}>
+        <Text style={s.detailLabel}>{session.type === 'retelling' ? 'Исходный текст' : 'Тема'}</Text>
+        <Text style={s.detailBody}>{session.source_text}</Text>
+      </View>
+
+      <View style={s.detailSection}>
+        <Text style={s.detailLabel}>Твой ответ</Text>
+        <Text style={s.detailBody}>{session.user_text}</Text>
+      </View>
+
+      <View style={[s.detailSection, s.detailFeedbackBox]}>
+        <Text style={s.detailLabel}>Обратная связь</Text>
+        <Text style={s.detailBody}>{session.feedback}</Text>
+      </View>
     </View>
   );
 }
@@ -640,6 +689,18 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   historyFeedback: { fontSize: 12, color: c.text3, lineHeight: 17 },
   loadMoreBtn: { alignItems: 'center', paddingVertical: 12 },
   loadMoreText: { color: c.accent, fontSize: 14, fontWeight: '600' },
+  // History detail
+  detailContainer: { padding: 20, paddingBottom: 40 },
+  detailHeader: { marginBottom: 20 },
+  detailType: { fontSize: 22, fontWeight: '800', color: c.text, marginBottom: 4 },
+  detailDate: { fontSize: 13, color: c.text4 },
+  detailSection: {
+    backgroundColor: c.surface, borderRadius: 14, padding: 16,
+    marginBottom: 12, borderWidth: 1, borderColor: c.border,
+  },
+  detailFeedbackBox: { backgroundColor: c.accentSurface, borderColor: c.accent + '40' },
+  detailLabel: { fontSize: 11, fontWeight: '700', color: c.text4, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  detailBody: { fontSize: 14, color: c.text, lineHeight: 22 },
 });
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
