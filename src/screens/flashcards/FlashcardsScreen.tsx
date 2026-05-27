@@ -210,7 +210,7 @@ function DecksListScreen({ navigation }: any) {
 
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={s.overlay}>
-          <View style={[s.modal, { paddingBottom: Math.max(20, insets.bottom + 12) }]}>
+          <View style={[s.modal, { paddingBottom: insets.bottom + 12 }]}>
             <Text style={s.modalTitle}>Новая колода</Text>
             <TextInput
               style={s.input}
