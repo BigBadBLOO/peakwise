@@ -1,6 +1,7 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import * as FileSystem from 'expo-file-system/legacy';
+import { TurboModuleRegistry } from 'react-native';
 
-// llama.rn temporarily disabled — pending compatibility fix for Android 16 + RN 0.81.5
 export type LlamaStatus =
   | 'idle'
   | 'requires_build'
@@ -19,17 +20,141 @@ export interface UseLlamaResult {
   generate: (system: string, user: string, maxTokens?: number) => Promise<string>;
 }
 
+const MODEL_URL =
+  'https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_k_m.gguf';
+const MODEL_FILE = 'peakwise_model.gguf';
+const MIN_MODEL_BYTES = 100 * 1024 * 1024; // 100 MB sanity check
+
+// Module-level singleton — survives re-renders and navigation
+let sharedCtx: any = null;
+
+function isNativeAvailable(): boolean {
+  try {
+    return TurboModuleRegistry.get('RNLlama') !== null;
+  } catch {
+    return false;
+  }
+}
+
+function getLlama() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('llama.rn');
+}
+
 export function useLlama(): UseLlamaResult {
-  const download = useCallback(() => {}, []);
-  const generate = useCallback(async (): Promise<string> => {
-    throw new Error('On-device LLM not available');
+  const [status, setStatus] = useState<LlamaStatus>(() =>
+    isNativeAvailable() ? 'idle' : 'requires_build'
+  );
+  const [progress, setProgress] = useState(0);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const mounted = useRef(true);
+  const downloadRef = useRef<FileSystem.DownloadResumable | null>(null);
+
+  useEffect(() => {
+    mounted.current = true;
+    if (!isNativeAvailable()) return;
+
+    if (sharedCtx) {
+      setStatus('ready');
+      return;
+    }
+
+    // Auto-load model if already downloaded
+    (async () => {
+      try {
+        const path = FileSystem.documentDirectory + MODEL_FILE;
+        const info = await FileSystem.getInfoAsync(path);
+        if (info.exists && (info as any).size > MIN_MODEL_BYTES) {
+          if (!mounted.current) return;
+          setStatus('loading_model');
+          const { initLlama } = getLlama();
+          sharedCtx = await initLlama({ model: path, n_ctx: 2048, n_threads: 4, n_gpu_layers: 0 });
+          if (mounted.current) setStatus('ready');
+        }
+      } catch (e: any) {
+        if (mounted.current) {
+          setErrorMessage(e?.message ?? 'Ошибка загрузки модели');
+          setStatus('error');
+        }
+      }
+    })();
+
+    return () => { mounted.current = false; };
+  }, []);
+
+  const download = useCallback(() => {
+    if (!isNativeAvailable()) return;
+    if (status === 'downloading' || status === 'loading_model' || status === 'ready') return;
+
+    setStatus('downloading');
+    setProgress(0);
+    setErrorMessage(null);
+
+    const path = FileSystem.documentDirectory + MODEL_FILE;
+
+    const resumable = FileSystem.createDownloadResumable(
+      MODEL_URL,
+      path,
+      {},
+      ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
+        if (!mounted.current) return;
+        const pct = totalBytesExpectedToWrite > 0
+          ? totalBytesWritten / totalBytesExpectedToWrite
+          : 0;
+        setProgress(pct);
+      }
+    );
+    downloadRef.current = resumable;
+
+    resumable.downloadAsync().then(async (result) => {
+      if (!result || !mounted.current) return;
+      setStatus('loading_model');
+      try {
+        const { initLlama } = getLlama();
+        sharedCtx = await initLlama({ model: path, n_ctx: 2048, n_threads: 4, n_gpu_layers: 0 });
+        if (mounted.current) setStatus('ready');
+      } catch (e: any) {
+        if (mounted.current) {
+          setErrorMessage(e?.message ?? 'Ошибка инициализации модели');
+          setStatus('error');
+        }
+      }
+    }).catch((e: any) => {
+      if (!mounted.current) return;
+      setErrorMessage(e?.message ?? 'Ошибка скачивания');
+      setStatus('error');
+    });
+  }, [status]);
+
+  const generate = useCallback(async (
+    system: string,
+    user: string,
+    maxTokens = 600
+  ): Promise<string> => {
+    if (!sharedCtx) throw new Error('Модель не загружена');
+    if (!mounted.current) throw new Error('Компонент размонтирован');
+
+    setStatus('inferring');
+    try {
+      const result = await sharedCtx.completion({
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        n_predict: maxTokens,
+        stop: ['<|im_end|>', '<|endoftext|>'],
+      });
+      return result.text ?? '';
+    } finally {
+      if (mounted.current) setStatus('ready');
+    }
   }, []);
 
   return {
-    status: 'requires_build',
-    progress: 0,
-    errorMessage: null,
-    isReady: false,
+    status,
+    progress,
+    errorMessage,
+    isReady: status === 'ready',
     download,
     generate,
   };
