@@ -3,7 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   Alert, ActivityIndicator, Modal, TextInput,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTheme, Colors } from '../../context/ThemeContext';
@@ -53,6 +53,7 @@ export function FlashcardsScreen() {
 function DecksListScreen({ navigation }: any) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
   const userStats = useUserStats();
 
   const [decks, setDecks] = useState<Deck[]>([]);
@@ -209,7 +210,7 @@ function DecksListScreen({ navigation }: any) {
 
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={s.overlay}>
-          <View style={s.modal}>
+          <View style={[s.modal, { paddingBottom: Math.max(20, insets.bottom + 12) }]}>
             <Text style={s.modalTitle}>Новая колода</Text>
             <TextInput
               style={s.input}
