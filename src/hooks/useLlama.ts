@@ -42,9 +42,11 @@ function getLlama() {
 }
 
 export function useLlama(): UseLlamaResult {
-  const [status, setStatus] = useState<LlamaStatus>(() =>
-    isNativeAvailable() ? 'idle' : 'requires_build'
-  );
+  const [status, setStatus] = useState<LlamaStatus>(() => {
+    if (!isNativeAvailable()) return 'requires_build';
+    if (sharedCtx) return 'ready';
+    return 'idle';
+  });
   const [progress, setProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const mounted = useRef(true);
