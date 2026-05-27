@@ -123,6 +123,17 @@ async function init(): Promise<SQLite.SQLiteDatabase> {
     );
   `);
 
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS essay_sessions (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      source_text TEXT NOT NULL,
+      user_text TEXT NOT NULL,
+      feedback TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+  `);
+
   return database;
 }
 

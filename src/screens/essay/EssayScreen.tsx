@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, ActivityIndicator, Alert,
@@ -10,6 +10,7 @@ import { useTheme, Colors } from '../../context/ThemeContext';
 import { Icon } from '../../components/Icon';
 import { claudeChat } from '../../services/claude';
 import { addXp, ESSAY_XP } from '../../db/stats';
+import { saveEssaySession, getEssaySessions, EssaySession } from '../../db/essays';
 import { useLlama, LlamaStatus } from '../../hooks/useLlama';
 
 type Stage =
@@ -54,6 +55,22 @@ export function EssayScreen() {
   const [essayInput, setEssayInput] = useState('');
   const [feedback, setFeedback] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const [history, setHistory] = useState<EssaySession[]>([]);
+  const [historyOffset, setHistoryOffset] = useState(0);
+  const [historyDone, setHistoryDone] = useState(false);
+  const PAGE = 3;
+
+  const loadHistory = useCallback(async (offset: number, replace = false) => {
+    const rows = await getEssaySessions(PAGE + 1, offset);
+    const hasMore = rows.length > PAGE;
+    const page = rows.slice(0, PAGE);
+    setHistory(prev => replace ? page : [...prev, ...page]);
+    setHistoryOffset(offset + PAGE);
+    setHistoryDone(!hasMore);
+  }, []);
+
+  useEffect(() => { loadHistory(0, true); }, [loadHistory]);
 
   const checkAI = (): boolean => {
     if (llama.isReady || settings.claudeApiKey) return true;
@@ -103,6 +120,8 @@ export function EssayScreen() {
       setFeedback(result);
       setStage('feedback-retelling');
       await addXp(ESSAY_XP.retelling);
+      await saveEssaySession('retelling', sourceText, retellingInput, result);
+      loadHistory(0, true);
     } catch (e: any) {
       Alert.alert('Ошибка', e.message);
     } finally {
@@ -142,6 +161,8 @@ export function EssayScreen() {
       setFeedback(result);
       setStage('feedback-essay');
       await addXp(ESSAY_XP.essay);
+      await saveEssaySession('essay', essayTopic, essayInput, result);
+      loadHistory(0, true);
     } catch (e: any) {
       Alert.alert('Ошибка', e.message);
     } finally {
@@ -168,6 +189,8 @@ export function EssayScreen() {
             llamaError={llama.errorMessage}
             onDownload={llama.download}
             hasApiKey={!!settings.claudeApiKey}
+            history={history} historyDone={historyDone}
+            onLoadMore={() => loadHistory(historyOffset)}
             s={s} colors={colors} />
         )}
         {stage === 'reading' && (
@@ -263,12 +286,14 @@ function ModelBanner({ status, progress, errorMessage, onDownload, s, colors }: 
 // ── Sub-screens ───────────────────────────────────────────────────────────────
 
 function LevelSelect({ level, topic, onLevelChange, onTopicChange, onGenerate, loading,
-  llamaStatus, llamaProgress, llamaError, onDownload, hasApiKey, s, colors }: {
+  llamaStatus, llamaProgress, llamaError, onDownload, hasApiKey,
+  history, historyDone, onLoadMore, s, colors }: {
   level: number; topic: string;
   onLevelChange: (v: number) => void; onTopicChange: (v: string) => void;
   onGenerate: () => void; loading: boolean;
   llamaStatus: LlamaStatus; llamaProgress: number; llamaError: string | null;
   onDownload: () => void; hasApiKey: boolean;
+  history: EssaySession[]; historyDone: boolean; onLoadMore: () => void;
   s: any; colors: Colors;
 }) {
   const current = LEVELS[level - 1];
@@ -356,6 +381,31 @@ function LevelSelect({ level, topic, onLevelChange, onTopicChange, onGenerate, l
           )}
         </TouchableOpacity>
       </View>
+
+      {history.length > 0 && (
+        <View style={s.section}>
+          <Text style={[s.sectionLabel, { marginBottom: 10 }]}>История</Text>
+          {history.map(item => (
+            <View key={item.id} style={s.historyCard}>
+              <View style={s.historyCardHeader}>
+                <Text style={s.historyType}>
+                  {item.type === 'retelling' ? 'Изложение' : 'Сочинение'}
+                </Text>
+                <Text style={s.historyDate}>
+                  {new Date(item.created_at).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}
+                </Text>
+              </View>
+              <Text style={s.historySource} numberOfLines={2}>{item.source_text}</Text>
+              <Text style={s.historyFeedback} numberOfLines={3}>{item.feedback}</Text>
+            </View>
+          ))}
+          {!historyDone && (
+            <TouchableOpacity style={s.loadMoreBtn} onPress={onLoadMore} activeOpacity={0.75}>
+              <Text style={s.loadMoreText}>Загрузить ещё</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -522,6 +572,16 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     height: 4, backgroundColor: c.border, borderRadius: 2, marginTop: 8, overflow: 'hidden',
   },
   progressFill: { height: 4, backgroundColor: c.mint, borderRadius: 2 },
+  historyCard: {
+    backgroundColor: c.surface2, borderRadius: 14, padding: 14, marginBottom: 10,
+  },
+  historyCardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  historyType: { fontSize: 13, fontWeight: '700', color: c.accent },
+  historyDate: { fontSize: 12, color: c.text4 },
+  historySource: { fontSize: 13, color: c.text2, marginBottom: 6, lineHeight: 18 },
+  historyFeedback: { fontSize: 12, color: c.text3, lineHeight: 17 },
+  loadMoreBtn: { alignItems: 'center', paddingVertical: 12 },
+  loadMoreText: { color: c.accent, fontSize: 14, fontWeight: '600' },
 });
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
