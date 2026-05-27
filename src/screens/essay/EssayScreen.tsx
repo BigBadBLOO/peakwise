@@ -200,7 +200,7 @@ export function EssayScreen() {
             history={history} historyDone={historyDone}
             onLoadMore={() => loadHistory(historyOffset)}
             llamaStatus={llama.status} llamaProgress={llama.progress}
-            llamaError={llama.errorMessage} onDownload={llama.download}
+            llamaError={llama.errorMessage} onDownload={llama.download} onDelete={llama.deleteModel}
             s={s} colors={colors}
           />
         )}
@@ -251,11 +251,11 @@ export function EssayScreen() {
 // ── Mode select ───────────────────────────────────────────────────────────────
 
 function ModeSelect({ onSelect, history, historyDone, onLoadMore,
-  llamaStatus, llamaProgress, llamaError, onDownload, s, colors }: {
+  llamaStatus, llamaProgress, llamaError, onDownload, onDelete, s, colors }: {
   onSelect: (m: Mode) => void;
   history: EssaySession[]; historyDone: boolean; onLoadMore: () => void;
   llamaStatus: LlamaStatus; llamaProgress: number; llamaError: string | null;
-  onDownload: () => void; s: any; colors: Colors;
+  onDownload: () => void; onDelete: () => void; s: any; colors: Colors;
 }) {
   return (
     <View>
@@ -273,7 +273,7 @@ function ModeSelect({ onSelect, history, historyDone, onLoadMore,
 
       <View style={s.section}>
         <ModelBanner status={llamaStatus} progress={llamaProgress}
-          errorMessage={llamaError} onDownload={onDownload} s={s} colors={colors} />
+          errorMessage={llamaError} onDownload={onDownload} onDelete={onDelete} s={s} colors={colors} />
 
         {MODES.map(m => (
           <TouchableOpacity key={m.id} style={s.modeCard} onPress={() => onSelect(m.id)} activeOpacity={0.82}>
@@ -396,11 +396,20 @@ function LevelSelect({ mode, level, topic, onBack, onLevelChange, onTopicChange,
 
 // ── Model banner ──────────────────────────────────────────────────────────────
 
-function ModelBanner({ status, progress, errorMessage, onDownload, s, colors }: {
+function ModelBanner({ status, progress, errorMessage, onDownload, onDelete, s, colors }: {
   status: LlamaStatus; progress: number; errorMessage: string | null;
-  onDownload: () => void; s: any; colors: Colors;
+  onDownload: () => void; onDelete: () => void; s: any; colors: Colors;
 }) {
-  if (status === 'ready') return null;
+  if (status === 'ready') {
+    return (
+      <View style={s.bannerReady}>
+        <Text style={s.bannerReadyText}>✓ Gemma-2-2B загружена</Text>
+        <TouchableOpacity onPress={onDelete} activeOpacity={0.7}>
+          <Text style={s.bannerDeleteText}>Удалить</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (status === 'requires_build') {
     return (
@@ -615,6 +624,13 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   bannerBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   progressTrack: { height: 4, backgroundColor: c.border, borderRadius: 2, marginTop: 8, overflow: 'hidden' },
   progressFill: { height: 4, backgroundColor: c.mint, borderRadius: 2 },
+  bannerReady: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: c.surface, borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: c.border, marginBottom: 20,
+  },
+  bannerReadyText: { fontSize: 13, color: c.text3 },
+  bannerDeleteText: { fontSize: 13, color: c.rateForgot ?? '#E0455A', fontWeight: '600' },
   // History
   historyCard: { backgroundColor: c.surface2, borderRadius: 14, padding: 14, marginBottom: 10 },
   historyCardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },

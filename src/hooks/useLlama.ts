@@ -17,6 +17,7 @@ export interface UseLlamaResult {
   errorMessage: string | null;
   isReady: boolean;
   download: () => void;
+  deleteModel: () => Promise<void>;
   generate: (system: string, user: string, maxTokens?: number) => Promise<string>;
 }
 
@@ -152,12 +153,24 @@ export function useLlama(): UseLlamaResult {
     }
   }, []);
 
+  const deleteModel = useCallback(async () => {
+    sharedCtx = null;
+    const path = FileSystem.documentDirectory + MODEL_FILE;
+    await FileSystem.deleteAsync(path, { idempotent: true });
+    if (mounted.current) {
+      setStatus('idle');
+      setProgress(0);
+      setErrorMessage(null);
+    }
+  }, []);
+
   return {
     status,
     progress,
     errorMessage,
     isReady: status === 'ready',
     download,
+    deleteModel,
     generate,
   };
 }
