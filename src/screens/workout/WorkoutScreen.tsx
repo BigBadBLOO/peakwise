@@ -3,7 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   Alert, Modal, TextInput, ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTheme, Colors } from '../../context/ThemeContext';
@@ -64,6 +64,7 @@ export function WorkoutScreen() {
 function ProgramsListScreen({ navigation }: any) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const [programs, setPrograms] = useState<Program[]>([]);
   const [statsMap, setStatsMap] = useState<Record<string, { sessionCount: number; lastDate: string | null }>>({});
@@ -179,7 +180,7 @@ function ProgramsListScreen({ navigation }: any) {
       </View>
 
       <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={s.overlay}>
+        <View style={[s.overlay, { paddingBottom: insets.bottom }]}>
           <View style={s.modal}>
             <Text style={s.modalTitle}>Новая программа</Text>
             <TextInput

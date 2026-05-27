@@ -3,7 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   Alert, Modal, TextInput,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, Colors } from '../../context/ThemeContext';
 import { Icon } from '../../components/Icon';
 import {
@@ -22,6 +22,7 @@ export function ProgramScreen({ navigation, route }: Props) {
   const { programId } = route.params;
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const [days, setDays] = useState<WorkoutDay[]>([]);
   const [exerciseCounts, setExerciseCounts] = useState<Record<string, number>>({});
@@ -161,7 +162,7 @@ export function ProgramScreen({ navigation, route }: Props) {
       </View>
 
       <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={s.overlay}>
+        <View style={[s.overlay, { paddingBottom: insets.bottom }]}>
           <View style={s.modal}>
             <Text style={s.modalTitle}>Новый тренировочный день</Text>
             <TextInput

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList, Alert, TextInput, Modal, Switch,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, Colors } from '../../context/ThemeContext';
 import { Icon } from '../../components/Icon';
 import { Card, createCard, deleteCard, getCards, getDeckStats } from '../../db/flashcards';
@@ -16,6 +16,7 @@ export function DeckScreen({ navigation, route }: Props) {
   const { deckId } = route.params;
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const [cards, setCards] = useState<Card[]>([]);
   const [stats, setStats] = useState({ total: 0, due: 0, mastered: 0 });
@@ -161,7 +162,7 @@ export function DeckScreen({ navigation, route }: Props) {
       </View>
 
       <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={s.overlay}>
+        <View style={[s.overlay, { paddingBottom: insets.bottom }]}>
           <View style={s.modal}>
             <Text style={s.modalTitle}>Новая карточка</Text>
             <TextInput

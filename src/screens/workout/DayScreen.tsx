@@ -3,7 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Alert, Modal, TextInput,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, Colors } from '../../context/ThemeContext';
 import { Icon } from '../../components/Icon';
 import {
@@ -25,6 +25,7 @@ export function DayScreen({ navigation, route }: Props) {
   const { dayId } = route.params;
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const [exercises, setExercises] = useState<ExerciseWithSets[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -255,7 +256,7 @@ export function DayScreen({ navigation, route }: Props) {
 
       {/* Exercise modal */}
       <Modal visible={exModal} transparent animationType="slide">
-        <View style={s.overlay}>
+        <View style={[s.overlay, { paddingBottom: insets.bottom }]}>
           <View style={s.modal}>
             <Text style={s.modalTitle}>{editingEx ? 'Изменить упражнение' : 'Новое упражнение'}</Text>
             <TextInput
@@ -309,7 +310,7 @@ export function DayScreen({ navigation, route }: Props) {
 
       {/* Set modal */}
       <Modal visible={setModal} transparent animationType="slide">
-        <View style={s.overlay}>
+        <View style={[s.overlay, { paddingBottom: insets.bottom }]}>
           <View style={s.modal}>
             <Text style={s.modalTitle}>Подход {editingSet?.setNumber}</Text>
             <View style={s.setInputRow}>

@@ -2,13 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, TextInput, Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, Colors } from '../../context/ThemeContext';
 import { Icon } from '../../components/Icon';
 import {
   Exercise, PlannedSet, LoggedSet,
   getExercises, getPlannedSets, logSet, getSessionLogs,
-  finishSession, deleteSession, getSessionStats, SessionStats,
+  finishSession, deleteSession, getSessionStats, SessionStats, upsertPlannedSet,
 } from '../../db/workout';
 import { addXp } from '../../db/stats';
 
@@ -38,6 +38,7 @@ export function ActiveWorkoutScreen({ navigation, route }: Props) {
   const { sessionId, dayId, dayName } = route.params;
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const [exercises, setExercises] = useState<ExerciseWithSets[]>([]);
   const [loggedSets, setLoggedSets] = useState<Record<string, LoggedSet[]>>({});
@@ -226,6 +227,15 @@ export function ActiveWorkoutScreen({ navigation, route }: Props) {
         onPress: async () => {
           const durationSecs = globalElapsed;
           await finishSession(sessionId, durationSecs);
+
+          // Sync logged sets back to the program plan so next session has updated weights/reps
+          const allLogs = await getSessionLogs(sessionId);
+          await Promise.all(
+            allLogs
+              .filter(l => l.exercise_id != null)
+              .map(l => upsertPlannedSet(l.exercise_id!, l.set_number, l.reps, l.weight)),
+          );
+
           await addXp(WORKOUT_XP * exercises.length);
           const stats = await getSessionStats(sessionId);
           setDoneStats(stats);
@@ -447,7 +457,7 @@ export function ActiveWorkoutScreen({ navigation, route }: Props) {
 
       {/* Set logging modal */}
       <Modal visible={!!setEdit} transparent animationType="slide">
-        <View style={s.overlay}>
+        <View style={[s.overlay, { paddingBottom: insets.bottom }]}>
           <View style={s.modal}>
             <Text style={s.modalTitle}>
               {setEdit?.exerciseName} · Подход {setEdit?.setNumber}
