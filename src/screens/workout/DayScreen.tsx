@@ -256,8 +256,8 @@ export function DayScreen({ navigation, route }: Props) {
 
       {/* Exercise modal */}
       <Modal visible={exModal} transparent animationType="slide">
-        <View style={[s.overlay, { paddingBottom: insets.bottom }]}>
-          <View style={s.modal}>
+        <View style={s.overlay}>
+          <View style={[s.modal, { paddingBottom: insets.bottom + 20 }]}>
             <Text style={s.modalTitle}>{editingEx ? 'Изменить упражнение' : 'Новое упражнение'}</Text>
             <TextInput
               style={s.input}
@@ -310,8 +310,8 @@ export function DayScreen({ navigation, route }: Props) {
 
       {/* Set modal */}
       <Modal visible={setModal} transparent animationType="slide">
-        <View style={[s.overlay, { paddingBottom: insets.bottom }]}>
-          <View style={s.modal}>
+        <View style={s.overlay}>
+          <View style={[s.modal, { paddingBottom: insets.bottom + 20 }]}>
             <Text style={s.modalTitle}>Подход {editingSet?.setNumber}</Text>
             <View style={s.setInputRow}>
               <View style={s.setInputGroup}>

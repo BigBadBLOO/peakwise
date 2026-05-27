@@ -457,8 +457,8 @@ export function ActiveWorkoutScreen({ navigation, route }: Props) {
 
       {/* Set logging modal */}
       <Modal visible={!!setEdit} transparent animationType="slide">
-        <View style={[s.overlay, { paddingBottom: insets.bottom }]}>
-          <View style={s.modal}>
+        <View style={s.overlay}>
+          <View style={[s.modal, { paddingBottom: insets.bottom + 20 }]}>
             <Text style={s.modalTitle}>
               {setEdit?.exerciseName} · Подход {setEdit?.setNumber}
             </Text>
