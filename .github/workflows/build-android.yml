@@ -93,8 +93,8 @@ jobs:
 
       - name: Rename APK
         run: |
-          mv android/app/build/outputs/apk/release/app-release-unsigned.apk \
-             android/app/build/outputs/apk/release/${{ steps.version.outputs.apk_name }}
+          find android/app/build/outputs/apk/release/ -name "*.apk" | head -1 | \
+            xargs -I{} mv {} android/app/build/outputs/apk/release/${{ steps.version.outputs.apk_name }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
