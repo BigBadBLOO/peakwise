@@ -441,7 +441,7 @@ export function ActiveWorkoutScreen({ navigation, route }: Props) {
       {/* Rest timer overlay */}
       <Modal visible={restRemaining != null && restRemaining > 0} transparent animationType="slide">
         <View style={s.restOverlay}>
-          <View style={s.restSheet}>
+          <View style={[s.restSheet, { paddingBottom: insets.bottom + 28 }]}>
             <Text style={s.restLabel}>Отдых</Text>
             <Text style={s.restCountdown}>{fmtTime(restRemaining ?? 0)}</Text>
             <View style={s.restProgressTrack}>
