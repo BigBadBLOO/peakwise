@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList, Alert, TextInput, Modal, Switch,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, Colors } from '../../context/ThemeContext';
 import { Icon } from '../../components/Icon';
 import { Card, createCard, deleteCard, getCards, getDeckStats } from '../../db/flashcards';
@@ -83,7 +84,7 @@ export function DeckScreen({ navigation, route }: Props) {
   }
 
   return (
-    <SafeAreaView style={s.container} edges={['bottom']}>
+    <View style={s.container}>
       {/* Stats row */}
       <View style={s.statsRow}>
         <View style={s.statBlock}>
@@ -162,7 +163,7 @@ export function DeckScreen({ navigation, route }: Props) {
       </View>
 
       <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={s.overlay}>
+        <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={[s.modal, { paddingBottom: insets.bottom + 20 }]}>
             <Text style={s.modalTitle}>Новая карточка</Text>
             <TextInput
@@ -206,9 +207,9 @@ export function DeckScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 

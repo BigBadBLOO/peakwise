@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, TextInput, Alert,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, Colors } from '../../context/ThemeContext';
@@ -56,6 +57,7 @@ export function ActiveWorkoutScreen({ navigation, route }: Props) {
   // Rest countdown
   const [restStartAt, setRestStartAt] = useState<number | null>(null);
   const [restDuration, setRestDuration] = useState<number>(90);
+  const [restTimerEnabled, setRestTimerEnabled] = useState(true);
 
   // Set logging modal
   interface SetEdit {
@@ -211,7 +213,7 @@ export function ActiveWorkoutScreen({ navigation, route }: Props) {
     setLoggedSets(byEx);
 
     // Start rest countdown
-    if (ex && ex.rest_seconds > 0) {
+    if (restTimerEnabled && ex && ex.rest_seconds > 0) {
       setRestDuration(ex.rest_seconds);
       setRestStartAt(Date.now());
     }
@@ -268,7 +270,7 @@ export function ActiveWorkoutScreen({ navigation, route }: Props) {
   }
 
   return (
-    <SafeAreaView style={s.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={s.container} edges={['top']}>
       {/* Header */}
       <View style={s.header}>
         <TouchableOpacity style={s.headerBack} onPress={discardWorkout}>
@@ -281,9 +283,18 @@ export function ActiveWorkoutScreen({ navigation, route }: Props) {
             <Text style={s.timerText}>{fmtTime(globalElapsed)}</Text>
           </View>
         </View>
-        <TouchableOpacity style={s.finishBtn} onPress={finishWorkout}>
-          <Text style={s.finishBtnText}>Готово</Text>
-        </TouchableOpacity>
+        <View style={s.headerRight}>
+          <TouchableOpacity
+            style={[s.timerToggle, restTimerEnabled && s.timerToggleOn]}
+            onPress={() => setRestTimerEnabled(v => !v)}
+            activeOpacity={0.75}
+          >
+            <Icon name="stopwatch" size={14} color={restTimerEnabled ? colors.mint : colors.text4} />
+          </TouchableOpacity>
+          <TouchableOpacity style={s.finishBtn} onPress={finishWorkout}>
+            <Text style={s.finishBtnText}>Готово</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
@@ -457,7 +468,7 @@ export function ActiveWorkoutScreen({ navigation, route }: Props) {
 
       {/* Set logging modal */}
       <Modal visible={!!setEdit} transparent animationType="slide">
-        <View style={s.overlay}>
+        <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={[s.modal, { paddingBottom: insets.bottom + 20 }]}>
             <Text style={s.modalTitle}>
               {setEdit?.exerciseName} · Подход {setEdit?.setNumber}
@@ -553,7 +564,7 @@ export function ActiveWorkoutScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -572,7 +583,7 @@ function SessionCompleteScreen({
   fmtTime: (n: number) => string;
 }) {
   return (
-    <SafeAreaView style={[s.container, { justifyContent: 'center', padding: 24 }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={[s.container, { justifyContent: 'center', padding: 24 }]} edges={['top']}>
       <View style={s.doneCard}>
         <Icon name="trophy" size={48} color={colors.peak} strokeWidth={1.5} />
         <Text style={s.doneTitle}>Тренировка завершена!</Text>
@@ -624,6 +635,12 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   headerTitle: { fontSize: 16, fontWeight: '800', color: c.text },
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   timerText: { fontSize: 13, fontWeight: '700', color: c.mint },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  timerToggle: {
+    width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: c.surface2, borderWidth: 1, borderColor: c.border,
+  },
+  timerToggleOn: { backgroundColor: c.mintSoft, borderColor: c.mint },
   finishBtn: {
     backgroundColor: c.mint, borderRadius: 10,
     paddingHorizontal: 14, paddingVertical: 7,

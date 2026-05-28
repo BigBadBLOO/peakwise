@@ -3,7 +3,6 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme, Colors } from '../../context/ThemeContext';
@@ -193,7 +192,7 @@ export function EssayScreen() {
   const generateLabel = mode === 'essay' ? 'Придумать тему' : 'Сгенерировать текст';
 
   return (
-    <SafeAreaView style={s.container} edges={['bottom']}>
+    <View style={s.container}>
       <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
 
         {stage === 'mode-select' && (
@@ -251,7 +250,7 @@ export function EssayScreen() {
         )}
 
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
