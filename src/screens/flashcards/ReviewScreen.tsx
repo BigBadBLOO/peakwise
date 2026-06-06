@@ -46,6 +46,7 @@ export function ReviewScreen({ navigation, route }: Props) {
   const flipAnim = useRef(new Animated.Value(0)).current;
 
   const buildQueue = useCallback(async () => {
+    setLoading(true);
     const dueCards = await getDueCards(deckId);
     const items: ReviewItem[] = [];
     for (const card of dueCards) {
@@ -157,7 +158,9 @@ export function ReviewScreen({ navigation, route }: Props) {
     );
   }
 
-  const card = currentItem?.card!;
+  const card = currentItem?.card;
+  if (!card) return null;
+
   return (
     <SafeAreaView style={s.container} edges={['top', 'bottom']}>
       {/* Top bar */}
