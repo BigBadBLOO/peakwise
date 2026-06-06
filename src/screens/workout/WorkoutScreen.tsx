@@ -2,14 +2,11 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   Alert, Modal, TextInput, ActivityIndicator,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Share, ScrollView,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
-import * as DocumentPicker from 'expo-document-picker';
 import { useTheme, Colors } from '../../context/ThemeContext';
 import { Icon } from '../../components/Icon';
 import {
@@ -77,6 +74,9 @@ function ProgramsListScreen({ navigation }: any) {
   const [modalVisible, setModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
+  const [importModalVisible, setImportModalVisible] = useState(false);
+  const [importJson, setImportJson] = useState('');
+  const [importing, setImporting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,31 +95,32 @@ function ProgramsListScreen({ navigation }: any) {
     try {
       const data = await exportWorkoutData();
       const json = JSON.stringify(data, null, 2);
-      const path = FileSystem.cacheDirectory + 'peakwise_workouts.json';
-      await FileSystem.writeAsStringAsync(path, json, { encoding: FileSystem.EncodingType.UTF8 });
-      await Sharing.shareAsync(path, { mimeType: 'application/json', dialogTitle: 'Экспорт тренировок' });
+      await Share.share({ message: json, title: 'peakwise_workouts.json' });
     } catch (e) {
       Alert.alert('Ошибка', 'Не удалось экспортировать данные');
     }
   }, []);
 
-  const handleImport = useCallback(async () => {
+  const handleImportConfirm = useCallback(async () => {
+    if (!importJson.trim()) return;
+    setImporting(true);
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true });
-      if (result.canceled || !result.assets?.[0]?.uri) return;
-      const json = await FileSystem.readAsStringAsync(result.assets[0].uri);
-      const data: ImportProgram = JSON.parse(json);
+      const data: ImportProgram = JSON.parse(importJson.trim());
       if (!data.name || !Array.isArray(data.days)) {
-        Alert.alert('Ошибка', 'Неверный формат файла программы');
+        Alert.alert('Ошибка', 'Неверный формат программы');
         return;
       }
       await importProgram(data);
       await load();
+      setImportModalVisible(false);
+      setImportJson('');
       Alert.alert('Готово', `Программа "${data.name}" загружена`);
-    } catch (e) {
-      Alert.alert('Ошибка', 'Не удалось загрузить программу');
+    } catch {
+      Alert.alert('Ошибка', 'Не удалось разобрать JSON');
+    } finally {
+      setImporting(false);
     }
-  }, [load]);
+  }, [importJson, load]);
 
   useEffect(() => {
     load();
@@ -160,7 +161,7 @@ function ProgramsListScreen({ navigation }: any) {
             <Text style={s.heroSub}>{programs.length} программ · {totalSessions} сессий</Text>
           </View>
           <View style={s.heroActions}>
-            <TouchableOpacity style={s.heroBadge} onPress={handleImport} activeOpacity={0.7}>
+            <TouchableOpacity style={s.heroBadge} onPress={() => { setImportJson(''); setImportModalVisible(true); }} activeOpacity={0.7}>
               <Icon name="upload" size={18} color={colors.mint} strokeWidth={1.8} />
             </TouchableOpacity>
             <TouchableOpacity style={s.heroBadge} onPress={handleExport} activeOpacity={0.7}>
@@ -219,6 +220,7 @@ function ProgramsListScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
+      {/* Новая программа */}
       <Modal visible={modalVisible} transparent animationType="slide">
         <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={[s.modal, { paddingBottom: insets.bottom + 20 }]}>
@@ -249,6 +251,42 @@ function ProgramsListScreen({ navigation }: any) {
                 disabled={!newName.trim()}
               >
                 <Text style={s.saveText}>Создать</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Импорт программы */}
+      <Modal visible={importModalVisible} transparent animationType="slide">
+        <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={[s.modal, { paddingBottom: insets.bottom + 20 }]}>
+            <Text style={s.modalTitle}>Импорт программы</Text>
+            <Text style={s.modalHint}>Вставь JSON программы от Claude</Text>
+            <ScrollView style={s.jsonScroll} keyboardShouldPersistTaps="handled">
+              <TextInput
+                style={s.jsonInput}
+                placeholder={'{\n  "name": "...",\n  "days": [...]\n}'}
+                placeholderTextColor={colors.text4}
+                value={importJson}
+                onChangeText={setImportJson}
+                multiline
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+            </ScrollView>
+            <View style={s.modalBtns}>
+              <TouchableOpacity style={s.cancelBtn} onPress={() => setImportModalVisible(false)}>
+                <Text style={s.cancelText}>Отмена</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.saveBtn, (!importJson.trim() || importing) && s.saveBtnDisabled]}
+                onPress={handleImportConfirm}
+                disabled={!importJson.trim() || importing}
+              >
+                {importing
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={s.saveText}>Загрузить</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -308,9 +346,17 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     padding: 20, gap: 12,
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: c.text },
+  modalHint: { fontSize: 13, color: c.text3, marginTop: -4 },
   input: {
     backgroundColor: c.inputBg, borderRadius: 12, padding: 14,
     color: c.text, fontSize: 15, borderWidth: 1, borderColor: c.border,
+  },
+  jsonScroll: { maxHeight: 220 },
+  jsonInput: {
+    backgroundColor: c.inputBg, borderRadius: 12, padding: 14,
+    color: c.text, fontSize: 13, borderWidth: 1, borderColor: c.border,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    minHeight: 120,
   },
   modalBtns: { flexDirection: 'row', gap: 10 },
   cancelBtn: { flex: 1, backgroundColor: c.surface2, borderRadius: 12, padding: 14, alignItems: 'center' },
