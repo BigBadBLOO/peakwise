@@ -386,3 +386,147 @@ export async function getProgramStats(programId: string): Promise<{ sessionCount
   );
   return { sessionCount: row?.count ?? 0, lastDate: row?.lastDate ?? null };
 }
+
+// ── Export / Import ───────────────────────────────────────────────────────────
+
+export interface ExportedSet {
+  set_number: number;
+  target_reps: number | null;
+  target_weight: number | null;
+}
+
+export interface ExportedExercise {
+  name: string;
+  rest_seconds: number;
+  planned_sets: ExportedSet[];
+}
+
+export interface ExportedDay {
+  name: string;
+  exercises: ExportedExercise[];
+}
+
+export interface ExportedProgram {
+  name: string;
+  description: string;
+  days: ExportedDay[];
+}
+
+export interface HistorySetEntry {
+  set_number: number;
+  reps: number | null;
+  weight: number | null;
+  feeling: number;
+}
+
+export interface HistoryExerciseEntry {
+  name: string;
+  sets: HistorySetEntry[];
+}
+
+export interface HistorySessionEntry {
+  date: string;
+  day_name: string;
+  duration_minutes: number | null;
+  exercises: HistoryExerciseEntry[];
+}
+
+export interface WorkoutExport {
+  version: '1';
+  exported_at: string;
+  programs: ExportedProgram[];
+  recent_history: HistorySessionEntry[];
+}
+
+export interface ImportProgram {
+  name: string;
+  description?: string;
+  days: Array<{
+    name: string;
+    exercises: Array<{
+      name: string;
+      rest_seconds?: number;
+      sets: Array<{
+        set_number: number;
+        target_reps?: number | null;
+        target_weight?: number | null;
+      }>;
+    }>;
+  }>;
+}
+
+export async function exportWorkoutData(): Promise<WorkoutExport> {
+  const db = await getDb();
+
+  const programs = await getPrograms();
+  const exportedPrograms: ExportedProgram[] = [];
+
+  for (const prog of programs) {
+    const days = await getDays(prog.id);
+    const exportedDays: ExportedDay[] = [];
+    for (const day of days) {
+      const exercises = await getExercises(day.id);
+      const exportedExercises: ExportedExercise[] = [];
+      for (const ex of exercises) {
+        const sets = await getPlannedSets(ex.id);
+        exportedExercises.push({
+          name: ex.name,
+          rest_seconds: ex.rest_seconds,
+          planned_sets: sets.map(s => ({
+            set_number: s.set_number,
+            target_reps: s.target_reps,
+            target_weight: s.target_weight,
+          })),
+        });
+      }
+      exportedDays.push({ name: day.name, exercises: exportedExercises });
+    }
+    exportedPrograms.push({ name: prog.name, description: prog.description, days: exportedDays });
+  }
+
+  const sessions = await db.getAllAsync<WorkoutSession>(
+    `SELECT * FROM workout_sessions WHERE finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 30`,
+  );
+
+  const history: HistorySessionEntry[] = [];
+  for (const s of sessions) {
+    const logs = await getSessionLogs(s.id);
+    const exMap = new Map<string, HistorySetEntry[]>();
+    for (const log of logs) {
+      if (!exMap.has(log.exercise_name)) exMap.set(log.exercise_name, []);
+      exMap.get(log.exercise_name)!.push({
+        set_number: log.set_number,
+        reps: log.reps,
+        weight: log.weight,
+        feeling: log.feeling,
+      });
+    }
+    history.push({
+      date: s.date,
+      day_name: s.day_name,
+      duration_minutes: s.duration_seconds != null ? Math.round(s.duration_seconds / 60) : null,
+      exercises: Array.from(exMap.entries()).map(([name, sets]) => ({ name, sets })),
+    });
+  }
+
+  return {
+    version: '1',
+    exported_at: new Date().toISOString().slice(0, 10),
+    programs: exportedPrograms,
+    recent_history: history,
+  };
+}
+
+export async function importProgram(data: ImportProgram): Promise<Program> {
+  const prog = await createProgram(data.name, data.description ?? '');
+  for (const dayDef of data.days) {
+    const day = await createDay(prog.id, dayDef.name);
+    for (const exDef of dayDef.exercises) {
+      const ex = await createExercise(day.id, exDef.name, exDef.rest_seconds ?? 90);
+      for (const setDef of exDef.sets) {
+        await upsertPlannedSet(ex.id, setDef.set_number, setDef.target_reps ?? null, setDef.target_weight ?? null);
+      }
+    }
+  }
+  return prog;
+}

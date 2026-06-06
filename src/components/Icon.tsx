@@ -9,7 +9,9 @@ type IconName =
   | 'drag' | 'swap' | 'edit' | 'trash' | 'stack' | 'rotate'
   | 'filter' | 'wand' | 'clock' | 'shield' | 'key' | 'book'
   | 'lightning' | 'link' | 'compose'
-  | 'dumbbell' | 'stopwatch' | 'pause' | 'lap' | 'chart-bar' | 'calendar';
+  | 'dumbbell' | 'stopwatch' | 'pause' | 'lap' | 'chart-bar' | 'calendar'
+  | 'habits' | 'archive'
+  | 'upload' | 'download';
 
 interface IconProps {
   name: IconName;
@@ -63,6 +65,10 @@ const MAP: Record<IconName, string> = {
   lap:            'refresh-cw',
   'chart-bar':    'bar-chart-2',
   calendar:       'calendar',
+  habits:         'repeat',
+  archive:        'archive',
+  upload:         'upload',
+  download:       'download',
 };
 
 export function Icon({ name, size = 22, color = '#ffffff', strokeWidth: _sw }: IconProps) {

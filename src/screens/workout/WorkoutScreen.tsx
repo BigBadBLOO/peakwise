@@ -7,10 +7,14 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
 import { useTheme, Colors } from '../../context/ThemeContext';
 import { Icon } from '../../components/Icon';
 import {
   Program, getPrograms, createProgram, deleteProgram, getProgramStats,
+  exportWorkoutData, importProgram, ImportProgram,
 } from '../../db/workout';
 import { ProgramScreen } from './ProgramScreen';
 import { DayScreen } from './DayScreen';
@@ -87,6 +91,36 @@ function ProgramsListScreen({ navigation }: any) {
     }
   }, []);
 
+  const handleExport = useCallback(async () => {
+    try {
+      const data = await exportWorkoutData();
+      const json = JSON.stringify(data, null, 2);
+      const path = FileSystem.cacheDirectory + 'peakwise_workouts.json';
+      await FileSystem.writeAsStringAsync(path, json, { encoding: FileSystem.EncodingType.UTF8 });
+      await Sharing.shareAsync(path, { mimeType: 'application/json', dialogTitle: 'Экспорт тренировок' });
+    } catch (e) {
+      Alert.alert('Ошибка', 'Не удалось экспортировать данные');
+    }
+  }, []);
+
+  const handleImport = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+      const json = await FileSystem.readAsStringAsync(result.assets[0].uri);
+      const data: ImportProgram = JSON.parse(json);
+      if (!data.name || !Array.isArray(data.days)) {
+        Alert.alert('Ошибка', 'Неверный формат файла программы');
+        return;
+      }
+      await importProgram(data);
+      await load();
+      Alert.alert('Готово', `Программа "${data.name}" загружена`);
+    } catch (e) {
+      Alert.alert('Ошибка', 'Не удалось загрузить программу');
+    }
+  }, [load]);
+
   useEffect(() => {
     load();
     const unsub = navigation.addListener('focus', load);
@@ -125,8 +159,13 @@ function ProgramsListScreen({ navigation }: any) {
             <Text style={s.heroTitle}>Тренировки</Text>
             <Text style={s.heroSub}>{programs.length} программ · {totalSessions} сессий</Text>
           </View>
-          <View style={s.heroBadge}>
-            <Icon name="dumbbell" size={18} color={colors.mint} strokeWidth={1.8} />
+          <View style={s.heroActions}>
+            <TouchableOpacity style={s.heroBadge} onPress={handleImport} activeOpacity={0.7}>
+              <Icon name="upload" size={18} color={colors.mint} strokeWidth={1.8} />
+            </TouchableOpacity>
+            <TouchableOpacity style={s.heroBadge} onPress={handleExport} activeOpacity={0.7}>
+              <Icon name="download" size={18} color={colors.mint} strokeWidth={1.8} />
+            </TouchableOpacity>
           </View>
         </View>
       </LinearGradient>
@@ -231,6 +270,7 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   heroRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   heroTitle: { fontSize: 28, fontWeight: '800', color: c.text, letterSpacing: -0.5 },
   heroSub: { fontSize: 13, color: c.text3, marginTop: 2 },
+  heroActions: { flexDirection: 'row', gap: 8 },
   heroBadge: {
     width: 44, height: 44, borderRadius: 12,
     backgroundColor: c.mintSoft,

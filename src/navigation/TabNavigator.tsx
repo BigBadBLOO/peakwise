@@ -6,6 +6,7 @@ import { Icon } from '../components/Icon';
 import { EssayScreen } from '../screens/essay/EssayScreen';
 import { FlashcardsScreen } from '../screens/flashcards/FlashcardsScreen';
 import { WorkoutScreen } from '../screens/workout/WorkoutScreen';
+import { HabitsScreen } from '../screens/habits/HabitsScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
 
 const Tab = createBottomTabNavigator();
@@ -14,12 +15,14 @@ const MODULE_SCREENS: Record<string, React.ComponentType<any>> = {
   essay: EssayScreen,
   flashcards: FlashcardsScreen,
   workout: WorkoutScreen,
+  habits: HabitsScreen,
 };
 
-const MODULE_ICONS: Record<string, 'essay' | 'cards' | 'settings' | 'dumbbell'> = {
+const MODULE_ICONS: Record<string, 'essay' | 'cards' | 'settings' | 'dumbbell' | 'habits'> = {
   essay: 'essay',
   flashcards: 'cards',
   workout: 'dumbbell',
+  habits: 'habits',
 };
 
 export function TabNavigator() {
@@ -55,7 +58,7 @@ export function TabNavigator() {
             component={MODULE_SCREENS[module.id]}
             options={{
               title: module.label,
-              headerShown: module.id !== 'flashcards' && module.id !== 'workout',
+              headerShown: module.id !== 'flashcards' && module.id !== 'workout' && module.id !== 'habits',
               tabBarIcon: ({ color }) => (
                 <Icon name={MODULE_ICONS[module.id] ?? 'cards'} size={22} color={color} />
               ),

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
-export type ModuleId = 'essay' | 'flashcards' | 'workout';
+export type ModuleId = 'essay' | 'flashcards' | 'workout' | 'habits';
 
 export interface ModuleConfig {
   id: ModuleId;
@@ -16,6 +16,7 @@ const DEFAULT_MODULES: ModuleConfig[] = [
   { id: 'flashcards', label: 'Карточки', icon: '🃏', enabled: true, order: 0 },
   { id: 'workout', label: 'Тренировки', icon: '💪', enabled: true, order: 1 },
   { id: 'essay', label: 'Изложение', icon: '✍️', enabled: true, order: 2 },
+  { id: 'habits', label: 'Привычки', icon: '🔄', enabled: true, order: 3 },
 ];
 
 interface Settings {

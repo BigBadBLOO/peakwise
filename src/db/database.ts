@@ -134,6 +134,27 @@ async function init(): Promise<SQLite.SQLiteDatabase> {
     );
   `);
 
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS habits (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      created_at INTEGER NOT NULL,
+      archived_at INTEGER DEFAULT NULL
+    );
+  `);
+
+  await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS habit_logs (
+      id TEXT PRIMARY KEY,
+      habit_id TEXT NOT NULL,
+      date TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (habit_id) REFERENCES habits(id) ON DELETE CASCADE,
+      UNIQUE (habit_id, date)
+    );
+  `);
+
   return database;
 }
 
