@@ -455,39 +455,37 @@ export interface ImportProgram {
   }>;
 }
 
-export async function exportWorkoutData(): Promise<WorkoutExport> {
-  const db = await getDb();
-
-  const programs = await getPrograms();
-  const exportedPrograms: ExportedProgram[] = [];
-
-  for (const prog of programs) {
-    const days = await getDays(prog.id);
-    const exportedDays: ExportedDay[] = [];
-    for (const day of days) {
-      const exercises = await getExercises(day.id);
-      const exportedExercises: ExportedExercise[] = [];
-      for (const ex of exercises) {
-        const sets = await getPlannedSets(ex.id);
-        exportedExercises.push({
-          name: ex.name,
-          rest_seconds: ex.rest_seconds,
-          planned_sets: sets.map(s => ({
-            set_number: s.set_number,
-            target_reps: s.target_reps,
-            target_weight: s.target_weight,
-          })),
-        });
-      }
-      exportedDays.push({ name: day.name, exercises: exportedExercises });
+async function buildExportedProgram(prog: Program): Promise<ExportedProgram> {
+  const days = await getDays(prog.id);
+  const exportedDays: ExportedDay[] = [];
+  for (const day of days) {
+    const exercises = await getExercises(day.id);
+    const exportedExercises: ExportedExercise[] = [];
+    for (const ex of exercises) {
+      const sets = await getPlannedSets(ex.id);
+      exportedExercises.push({
+        name: ex.name,
+        rest_seconds: ex.rest_seconds,
+        planned_sets: sets.map(s => ({
+          set_number: s.set_number,
+          target_reps: s.target_reps,
+          target_weight: s.target_weight,
+        })),
+      });
     }
-    exportedPrograms.push({ name: prog.name, description: prog.description, days: exportedDays });
+    exportedDays.push({ name: day.name, exercises: exportedExercises });
   }
+  return { name: prog.name, description: prog.description, days: exportedDays };
+}
 
+async function buildHistory(programId: string | null): Promise<HistorySessionEntry[]> {
+  const db = await getDb();
   const sessions = await db.getAllAsync<WorkoutSession>(
-    `SELECT * FROM workout_sessions WHERE finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 30`,
+    programId
+      ? `SELECT * FROM workout_sessions WHERE program_id = ? AND finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 30`
+      : `SELECT * FROM workout_sessions WHERE finished_at IS NOT NULL ORDER BY started_at DESC LIMIT 30`,
+    ...(programId ? [programId] : []),
   );
-
   const history: HistorySessionEntry[] = [];
   for (const s of sessions) {
     const logs = await getSessionLogs(s.id);
@@ -508,12 +506,28 @@ export async function exportWorkoutData(): Promise<WorkoutExport> {
       exercises: Array.from(exMap.entries()).map(([name, sets]) => ({ name, sets })),
     });
   }
+  return history;
+}
 
+export async function exportProgramData(programId: string): Promise<WorkoutExport> {
+  const db = await getDb();
+  const prog = await db.getFirstAsync<Program>('SELECT * FROM workout_programs WHERE id = ?', programId);
+  if (!prog) throw new Error('Program not found');
   return {
     version: '1',
     exported_at: new Date().toISOString().slice(0, 10),
-    programs: exportedPrograms,
-    recent_history: history,
+    programs: [await buildExportedProgram(prog)],
+    recent_history: await buildHistory(programId),
+  };
+}
+
+export async function exportWorkoutData(): Promise<WorkoutExport> {
+  const programs = await getPrograms();
+  return {
+    version: '1',
+    exported_at: new Date().toISOString().slice(0, 10),
+    programs: await Promise.all(programs.map(buildExportedProgram)),
+    recent_history: await buildHistory(null),
   };
 }
 
@@ -529,4 +543,20 @@ export async function importProgram(data: ImportProgram): Promise<Program> {
     }
   }
   return prog;
+}
+
+export async function updateProgramPlan(programId: string, data: ImportProgram): Promise<void> {
+  const db = await getDb();
+  await updateProgram(programId, data.name, data.description ?? '');
+  // Delete existing days (cascades to exercises and planned sets, but NOT sessions)
+  await db.runAsync('DELETE FROM workout_days WHERE program_id = ?', programId);
+  for (const dayDef of data.days) {
+    const day = await createDay(programId, dayDef.name);
+    for (const exDef of dayDef.exercises) {
+      const ex = await createExercise(day.id, exDef.name, exDef.rest_seconds ?? 90);
+      for (const setDef of exDef.sets) {
+        await upsertPlannedSet(ex.id, setDef.set_number, setDef.target_reps ?? null, setDef.target_weight ?? null);
+      }
+    }
+  }
 }

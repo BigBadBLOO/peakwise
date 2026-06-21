@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   Alert, Modal, TextInput, ActivityIndicator,
-  KeyboardAvoidingView, Platform, Share, ScrollView,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,7 +11,6 @@ import { useTheme, Colors } from '../../context/ThemeContext';
 import { Icon } from '../../components/Icon';
 import {
   Program, getPrograms, createProgram, deleteProgram, getProgramStats,
-  exportWorkoutData, importProgram, ImportProgram,
 } from '../../db/workout';
 import { ProgramScreen } from './ProgramScreen';
 import { DayScreen } from './DayScreen';
@@ -74,9 +73,6 @@ function ProgramsListScreen({ navigation }: any) {
   const [modalVisible, setModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
-  const [importModalVisible, setImportModalVisible] = useState(false);
-  const [importJson, setImportJson] = useState('');
-  const [importing, setImporting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,36 +87,6 @@ function ProgramsListScreen({ navigation }: any) {
     }
   }, []);
 
-  const handleExport = useCallback(async () => {
-    try {
-      const data = await exportWorkoutData();
-      const json = JSON.stringify(data, null, 2);
-      await Share.share({ message: json, title: 'peakwise_workouts.json' });
-    } catch (e) {
-      Alert.alert('Ошибка', 'Не удалось экспортировать данные');
-    }
-  }, []);
-
-  const handleImportConfirm = useCallback(async () => {
-    if (!importJson.trim()) return;
-    setImporting(true);
-    try {
-      const data: ImportProgram = JSON.parse(importJson.trim());
-      if (!data.name || !Array.isArray(data.days)) {
-        Alert.alert('Ошибка', 'Неверный формат программы');
-        return;
-      }
-      await importProgram(data);
-      await load();
-      setImportModalVisible(false);
-      setImportJson('');
-      Alert.alert('Готово', `Программа "${data.name}" загружена`);
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось разобрать JSON');
-    } finally {
-      setImporting(false);
-    }
-  }, [importJson, load]);
 
   useEffect(() => {
     load();
@@ -160,13 +126,8 @@ function ProgramsListScreen({ navigation }: any) {
             <Text style={s.heroTitle}>Тренировки</Text>
             <Text style={s.heroSub}>{programs.length} программ · {totalSessions} сессий</Text>
           </View>
-          <View style={s.heroActions}>
-            <TouchableOpacity style={s.heroBadge} onPress={() => { setImportJson(''); setImportModalVisible(true); }} activeOpacity={0.7}>
-              <Icon name="upload" size={18} color={colors.mint} strokeWidth={1.8} />
-            </TouchableOpacity>
-            <TouchableOpacity style={s.heroBadge} onPress={handleExport} activeOpacity={0.7}>
-              <Icon name="download" size={18} color={colors.mint} strokeWidth={1.8} />
-            </TouchableOpacity>
+          <View style={s.heroBadge}>
+            <Icon name="dumbbell" size={18} color={colors.mint} strokeWidth={1.8} />
           </View>
         </View>
       </LinearGradient>
@@ -257,41 +218,6 @@ function ProgramsListScreen({ navigation }: any) {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Импорт программы */}
-      <Modal visible={importModalVisible} transparent animationType="slide">
-        <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={[s.modal, { paddingBottom: insets.bottom + 20 }]}>
-            <Text style={s.modalTitle}>Импорт программы</Text>
-            <Text style={s.modalHint}>Вставь JSON программы от Claude</Text>
-            <ScrollView style={s.jsonScroll} keyboardShouldPersistTaps="handled">
-              <TextInput
-                style={s.jsonInput}
-                placeholder={'{\n  "name": "...",\n  "days": [...]\n}'}
-                placeholderTextColor={colors.text4}
-                value={importJson}
-                onChangeText={setImportJson}
-                multiline
-                autoCorrect={false}
-                autoCapitalize="none"
-              />
-            </ScrollView>
-            <View style={s.modalBtns}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => setImportModalVisible(false)}>
-                <Text style={s.cancelText}>Отмена</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.saveBtn, (!importJson.trim() || importing) && s.saveBtnDisabled]}
-                onPress={handleImportConfirm}
-                disabled={!importJson.trim() || importing}
-              >
-                {importing
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={s.saveText}>Загрузить</Text>}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -308,7 +234,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   heroRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   heroTitle: { fontSize: 28, fontWeight: '800', color: c.text, letterSpacing: -0.5 },
   heroSub: { fontSize: 13, color: c.text3, marginTop: 2 },
-  heroActions: { flexDirection: 'row', gap: 8 },
   heroBadge: {
     width: 44, height: 44, borderRadius: 12,
     backgroundColor: c.mintSoft,
@@ -346,17 +271,9 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     padding: 20, gap: 12,
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: c.text },
-  modalHint: { fontSize: 13, color: c.text3, marginTop: -4 },
   input: {
     backgroundColor: c.inputBg, borderRadius: 12, padding: 14,
     color: c.text, fontSize: 15, borderWidth: 1, borderColor: c.border,
-  },
-  jsonScroll: { maxHeight: 220 },
-  jsonInput: {
-    backgroundColor: c.inputBg, borderRadius: 12, padding: 14,
-    color: c.text, fontSize: 13, borderWidth: 1, borderColor: c.border,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    minHeight: 120,
   },
   modalBtns: { flexDirection: 'row', gap: 10 },
   cancelBtn: { flex: 1, backgroundColor: c.surface2, borderRadius: 12, padding: 14, alignItems: 'center' },

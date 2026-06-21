@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   Alert, Modal, TextInput, KeyboardAvoidingView, Platform,
+  Share, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme, Colors } from '../../context/ThemeContext';
 import { Icon } from '../../components/Icon';
 import {
   WorkoutDay, Exercise, getDays, createDay, deleteDay, reorderDays,
-  getExercises, createSession,
+  getExercises, createSession, exportProgramData, updateProgramPlan, ImportProgram,
 } from '../../db/workout';
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -29,6 +30,9 @@ export function ProgramScreen({ navigation, route }: Props) {
   const [modalVisible, setModalVisible] = useState(false);
   const [newDayName, setNewDayName] = useState('');
   const [selectedWeekday, setSelectedWeekday] = useState<number | null>(null);
+  const [importModalVisible, setImportModalVisible] = useState(false);
+  const [importJson, setImportJson] = useState('');
+  const [importing, setImporting] = useState(false);
 
   const load = useCallback(async () => {
     const list = await getDays(programId);
@@ -40,6 +44,54 @@ export function ProgramScreen({ navigation, route }: Props) {
     }));
     setExerciseCounts(counts);
   }, [programId]);
+
+  const handleExport = useCallback(async () => {
+    try {
+      const data = await exportProgramData(programId);
+      await Share.share({ message: JSON.stringify(data, null, 2), title: 'peakwise_program.json' });
+    } catch {
+      Alert.alert('Ошибка', 'Не удалось экспортировать программу');
+    }
+  }, [programId]);
+
+  const handleImportConfirm = useCallback(async () => {
+    if (!importJson.trim()) return;
+    setImporting(true);
+    try {
+      const data: ImportProgram = JSON.parse(importJson.trim());
+      if (!data.name || !Array.isArray(data.days)) {
+        Alert.alert('Ошибка', 'Неверный формат программы');
+        return;
+      }
+      await updateProgramPlan(programId, data);
+      await load();
+      setImportModalVisible(false);
+      setImportJson('');
+      Alert.alert('Готово', 'Программа обновлена');
+    } catch {
+      Alert.alert('Ошибка', 'Не удалось разобрать JSON');
+    } finally {
+      setImporting(false);
+    }
+  }, [importJson, programId, load]);
+
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', gap: 8, marginRight: 4 }}>
+          <TouchableOpacity
+            onPress={() => { setImportJson(''); setImportModalVisible(true); }}
+            style={{ padding: 6 }}
+          >
+            <Icon name="upload" size={20} color={colors.mint} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleExport} style={{ padding: 6 }}>
+            <Icon name="download" size={20} color={colors.mint} />
+          </TouchableOpacity>
+        </View>
+      ),
+    });
+  }, [navigation, colors, handleExport]);
 
   useEffect(() => {
     load();
@@ -99,7 +151,6 @@ export function ProgramScreen({ navigation, route }: Props) {
           const exCount = exerciseCounts[item.id] ?? 0;
           return (
             <View style={s.dayCard}>
-              {/* Top row: drag + info + arrows */}
               <View style={s.dayMain}>
                 <TouchableOpacity style={s.dragArea} onPress={() => {}}>
                   <Icon name="drag" size={16} color={colors.text4} />
@@ -142,7 +193,6 @@ export function ProgramScreen({ navigation, route }: Props) {
                 </View>
               </View>
 
-              {/* Start button row */}
               {exCount > 0 && (
                 <TouchableOpacity style={s.startBtn} onPress={() => startWorkout(item)}>
                   <Icon name="play" size={13} color="#fff" />
@@ -161,6 +211,7 @@ export function ProgramScreen({ navigation, route }: Props) {
         </TouchableOpacity>
       </View>
 
+      {/* Добавить день */}
       <Modal visible={modalVisible} transparent animationType="slide">
         <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={[s.modal, { paddingBottom: insets.bottom + 20 }]}>
@@ -195,6 +246,42 @@ export function ProgramScreen({ navigation, route }: Props) {
                 disabled={!newDayName.trim()}
               >
                 <Text style={s.saveText}>Добавить</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Обновить программу */}
+      <Modal visible={importModalVisible} transparent animationType="slide">
+        <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={[s.modal, { paddingBottom: insets.bottom + 20 }]}>
+            <Text style={s.modalTitle}>Обновить программу</Text>
+            <Text style={s.modalHint}>Вставь JSON от Claude — дни и упражнения заменятся, история сохранится</Text>
+            <ScrollView style={s.jsonScroll} keyboardShouldPersistTaps="handled">
+              <TextInput
+                style={s.jsonInput}
+                placeholder={'{\n  "name": "...",\n  "days": [...]\n}'}
+                placeholderTextColor={colors.text4}
+                value={importJson}
+                onChangeText={setImportJson}
+                multiline
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+            </ScrollView>
+            <View style={s.modalBtns}>
+              <TouchableOpacity style={s.cancelBtn} onPress={() => setImportModalVisible(false)}>
+                <Text style={s.cancelText}>Отмена</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.saveBtn, (!importJson.trim() || importing) && s.saveBtnDisabled]}
+                onPress={handleImportConfirm}
+                disabled={!importJson.trim() || importing}
+              >
+                {importing
+                  ? <ActivityIndicator color="#fff" size="small" />
+                  : <Text style={s.saveText}>Обновить</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -252,10 +339,18 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     padding: 20, gap: 12,
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: c.text },
+  modalHint: { fontSize: 13, color: c.text3, marginTop: -4 },
   inputLabel: { fontSize: 12, fontWeight: '700', color: c.text3, marginBottom: -4 },
   input: {
     backgroundColor: c.inputBg, borderRadius: 12, padding: 14,
     color: c.text, fontSize: 15, borderWidth: 1, borderColor: c.border,
+  },
+  jsonScroll: { maxHeight: 200 },
+  jsonInput: {
+    backgroundColor: c.inputBg, borderRadius: 12, padding: 14,
+    color: c.text, fontSize: 13, borderWidth: 1, borderColor: c.border,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    minHeight: 120,
   },
   weekdayRow: { flexDirection: 'row', gap: 6 },
   wdBtn: {
