@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch,
+  View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Switch, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ModuleConfig, useSettings } from '../../context/SettingsContext';
@@ -8,22 +8,39 @@ import { useTheme, Colors } from '../../context/ThemeContext';
 import { Icon } from '../../components/Icon';
 import { APP_VERSION, APP_BUILD } from '../../constants/version';
 import { useUserStats } from '../../hooks/useUserStats';
+import { BridgeConfig, BridgeHealth, checkBridge, isBridgeConfigured } from '../../services/claude';
 
 export function SettingsScreen() {
-  const { settings, setClaudeApiKey, setModules } = useSettings();
+  const { settings, setBridge, setModules } = useSettings();
   const { colors, toggleTheme } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
 
   const userStats = useUserStats();
-  const [apiKey, setApiKeyLocal] = useState(settings.claudeApiKey);
+  const [bridgeUrl, setBridgeUrl] = useState(settings.bridge.url);
+  const [bridgeToken, setBridgeToken] = useState(settings.bridge.token);
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(true);
   const [modules, setModulesLocal] = useState<ModuleConfig[]>(settings.modules);
+  const [health, setHealth] = useState<BridgeHealth | null>(null);
+  const [checking, setChecking] = useState(false);
 
-  const saveApiKey = async () => {
-    await setClaudeApiKey(apiKey.trim());
+  useEffect(() => {
+    setBridgeUrl(settings.bridge.url);
+    setBridgeToken(settings.bridge.token);
+  }, [settings.bridge]);
+
+  const runCheck = useCallback(async (bridge: BridgeConfig) => {
+    if (!isBridgeConfigured(bridge)) { setHealth(null); return; }
+    setChecking(true);
+    setHealth(await checkBridge(bridge));
+    setChecking(false);
+  }, []);
+
+  useEffect(() => { runCheck(settings.bridge); }, [settings.bridge, runCheck]);
+
+  const saveBridge = async () => {
+    await setBridge({ url: bridgeUrl.trim(), token: bridgeToken.trim() });
     setSaved(true);
-    Alert.alert('Сохранено', 'Токен Claude API сохранён');
   };
 
   const moveModule = (index: number, dir: -1 | 1) => {
@@ -62,7 +79,7 @@ export function SettingsScreen() {
           </View>
         </View>
 
-        {/* Claude API */}
+        {/* Claude по подписке */}
         <Text style={s.sectionTitle}>AI Provider</Text>
         <View style={s.card}>
           <View style={s.apiHeader}>
@@ -70,29 +87,57 @@ export function SettingsScreen() {
               <Icon name="sparkle" size={16} color="#fff" />
             </View>
             <View style={s.apiInfo}>
-              <Text style={s.apiName}>Claude API</Text>
-              <Text style={s.apiDomain}>anthropic.com</Text>
+              <Text style={s.apiName}>Claude по подписке</Text>
+              <Text style={s.apiDomain}>через Claude Code на компьютере</Text>
             </View>
-            {settings.claudeApiKey ? (
+            {checking ? (
+              <ActivityIndicator size="small" color={colors.text3} />
+            ) : health?.ok ? (
               <View style={s.statusPill}>
                 <View style={s.statusDot} />
-                <Text style={s.statusText}>активен</Text>
+                <Text style={s.statusText}>работает</Text>
               </View>
             ) : (
               <View style={[s.statusPill, s.statusPillOff]}>
-                <Text style={[s.statusText, { color: colors.rateForgot }]}>не настроен</Text>
+                <Text style={[s.statusText, { color: colors.rateForgot }]}>
+                  {health ? 'ошибка' : 'не настроен'}
+                </Text>
               </View>
             )}
           </View>
 
+          {health && !checking && (
+            <View style={s.healthBox}>
+              {health.ok ? (
+                <Text style={[s.healthText, { color: colors.mint }]}>
+                  отвечает · {health.version}
+                  {health.subscription ? ` · подписка ${health.subscription}` : ''}
+                </Text>
+              ) : (
+                <Text style={[s.healthText, { color: colors.rateForgot }]}>{health.error}</Text>
+              )}
+            </View>
+          )}
+
           <View style={s.inputWrap}>
-            <Text style={s.inputLabel}>API-токен</Text>
+            <Text style={s.inputLabel}>Адрес моста</Text>
+            <TextInput
+              style={s.input}
+              value={bridgeUrl}
+              onChangeText={v => { setBridgeUrl(v); setSaved(false); }}
+              placeholder="http://192.168.1.10:8787"
+              placeholderTextColor={colors.text4}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+            />
+            <Text style={[s.inputLabel, { marginTop: 6 }]}>Токен моста</Text>
             <View style={s.inputRow}>
               <TextInput
                 style={s.input}
-                value={apiKey}
-                onChangeText={v => { setApiKeyLocal(v); setSaved(false); }}
-                placeholder="sk-ant-..."
+                value={bridgeToken}
+                onChangeText={v => { setBridgeToken(v); setSaved(false); }}
+                placeholder="из консоли claude-bridge"
                 placeholderTextColor={colors.text4}
                 secureTextEntry={!showKey}
                 autoCapitalize="none"
@@ -102,23 +147,27 @@ export function SettingsScreen() {
                 <Icon name={showKey ? 'eye-off' : 'eye'} size={18} color={colors.text3} />
               </TouchableOpacity>
             </View>
-            <Text style={s.inputHint}>Токен хранится только на устройстве</Text>
+            <Text style={s.inputHint}>
+              На Mac запусти: node scripts/claude-bridge.mjs — он покажет адрес и токен
+            </Text>
           </View>
 
-          <TouchableOpacity
-            style={[s.saveBtn, saved && s.saveBtnSaved]}
-            onPress={saveApiKey}
-            disabled={saved}
-          >
-            {saved ? (
-              <>
-                <Icon name="check" size={16} color={colors.mint} strokeWidth={2.5} />
-                <Text style={[s.saveBtnText, { color: colors.mint }]}>Сохранено</Text>
-              </>
-            ) : (
-              <Text style={s.saveBtnText}>Сохранить</Text>
-            )}
-          </TouchableOpacity>
+          {saved ? (
+            <TouchableOpacity
+              style={[s.saveBtn, s.saveBtnSaved]}
+              onPress={() => runCheck(settings.bridge)}
+              disabled={checking || !isBridgeConfigured(settings.bridge)}
+            >
+              <Icon name="check" size={16} color={colors.mint} strokeWidth={2.5} />
+              <Text style={[s.saveBtnText, { color: colors.mint }]}>
+                {checking ? 'Проверяю…' : 'Проверить подключение'}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={s.saveBtn} onPress={saveBridge}>
+              <Text style={s.saveBtnText}>Сохранить и проверить</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Appearance */}
@@ -255,6 +304,8 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     backgroundColor: c.inputBg, borderRadius: 10, borderWidth: 1, borderColor: c.border,
   },
   inputHint: { fontSize: 11, color: c.text4 },
+  healthBox: { paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.border },
+  healthText: { fontSize: 12, fontWeight: '600' },
   saveBtn: {
     margin: 14, borderRadius: 12, padding: 14,
     backgroundColor: c.accent, alignItems: 'center',

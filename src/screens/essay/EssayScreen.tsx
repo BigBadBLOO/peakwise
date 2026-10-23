@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSettings } from '../../context/SettingsContext';
 import { useTheme, Colors } from '../../context/ThemeContext';
 import { Icon } from '../../components/Icon';
-import { claudeChat } from '../../services/claude';
+import { claudeChat, isBridgeConfigured } from '../../services/claude';
 import { addXp, ESSAY_XP } from '../../db/stats';
 import { saveEssaySession, getEssaySessions, EssaySession } from '../../db/essays';
 import { useLlama, LlamaStatus } from '../../hooks/useLlama';
@@ -82,14 +82,14 @@ export function EssayScreen() {
   useEffect(() => { loadHistory(0, true); }, [loadHistory]);
 
   const checkAI = (): boolean => {
-    if (llama.isReady || settings.claudeApiKey) return true;
-    Alert.alert('Нужен AI', 'Загрузи модель на устройство или укажи API-ключ Claude в настройках.');
+    if (isBridgeConfigured(settings.bridge) || llama.isReady) return true;
+    Alert.alert('Нужен AI', 'Подключи подписку Claude в настройках или загрузи модель на устройство.');
     return false;
   };
 
   const aiGenerate = async (system: string, user: string, maxTokens = 600): Promise<string> => {
-    if (llama.isReady) return llama.generate(system, user, maxTokens);
-    return claudeChat(settings.claudeApiKey, [{ role: 'user', content: user }], system);
+    if (isBridgeConfigured(settings.bridge)) return claudeChat(settings.bridge, user, system);
+    return llama.generate(system, user, maxTokens);
   };
 
   const aiGenerateText = async (level: number, topicDesc: string): Promise<string> => {

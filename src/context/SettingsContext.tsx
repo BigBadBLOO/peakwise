@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import { BridgeConfig } from '../services/claude';
 
 export type ModuleId = 'essay' | 'flashcards' | 'workout' | 'habits';
 
@@ -20,13 +21,13 @@ const DEFAULT_MODULES: ModuleConfig[] = [
 ];
 
 interface Settings {
-  claudeApiKey: string;
+  bridge: BridgeConfig;
   modules: ModuleConfig[];
 }
 
 interface SettingsContextValue {
   settings: Settings;
-  setClaudeApiKey: (key: string) => Promise<void>;
+  setBridge: (bridge: BridgeConfig) => Promise<void>;
   setModules: (modules: ModuleConfig[]) => Promise<void>;
   isLoaded: boolean;
 }
@@ -34,11 +35,13 @@ interface SettingsContextValue {
 const SettingsContext = createContext<SettingsContextValue | null>(null);
 
 const MODULES_KEY = 'settings:modules';
-const API_KEY_SECURE_KEY = 'claude_api_key';
+const BRIDGE_URL_KEY = 'settings:bridgeUrl';
+const BRIDGE_TOKEN_SECURE_KEY = 'claude_bridge_token';
+const LEGACY_API_KEY_SECURE_KEY = 'claude_api_key';
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<Settings>({
-    claudeApiKey: '',
+    bridge: { url: '', token: '' },
     modules: DEFAULT_MODULES,
   });
   const [isLoaded, setIsLoaded] = useState(false);
@@ -46,10 +49,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [storedModules, storedKey] = await Promise.all([
+        const [storedModules, storedUrl, storedToken] = await Promise.all([
           AsyncStorage.getItem(MODULES_KEY).catch(() => null),
-          SecureStore.getItemAsync(API_KEY_SECURE_KEY).catch(() => null),
+          AsyncStorage.getItem(BRIDGE_URL_KEY).catch(() => null),
+          SecureStore.getItemAsync(BRIDGE_TOKEN_SECURE_KEY).catch(() => null),
         ]);
+        // API-ключ больше не используется — ИИ работает по подписке через мост
+        SecureStore.deleteItemAsync(LEGACY_API_KEY_SECURE_KEY).catch(() => {});
 
         let modules: ModuleConfig[] = storedModules ? JSON.parse(storedModules) : DEFAULT_MODULES;
         // Ensure any new default modules are added when user upgrades
@@ -59,7 +65,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           }
         }
         setSettings({
-          claudeApiKey: storedKey ?? '',
+          bridge: { url: storedUrl ?? '', token: storedToken ?? '' },
           modules,
         });
       } catch {
@@ -69,9 +75,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const setClaudeApiKey = async (key: string) => {
-    await SecureStore.setItemAsync(API_KEY_SECURE_KEY, key);
-    setSettings(prev => ({ ...prev, claudeApiKey: key }));
+  const setBridge = async (bridge: BridgeConfig) => {
+    await Promise.all([
+      AsyncStorage.setItem(BRIDGE_URL_KEY, bridge.url),
+      SecureStore.setItemAsync(BRIDGE_TOKEN_SECURE_KEY, bridge.token),
+    ]);
+    setSettings(prev => ({ ...prev, bridge }));
   };
 
   const setModules = async (modules: ModuleConfig[]) => {
@@ -80,7 +89,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <SettingsContext.Provider value={{ settings, setClaudeApiKey, setModules, isLoaded }}>
+    <SettingsContext.Provider value={{ settings, setBridge, setModules, isLoaded }}>
       {children}
     </SettingsContext.Provider>
   );

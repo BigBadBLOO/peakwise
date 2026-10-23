@@ -24,7 +24,23 @@
       "favicon": "./assets/favicon.png"
     },
     "ios": {
-      "bundleIdentifier": "com.peakwise.app"
-    }
+      "bundleIdentifier": "com.peakwise.app",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        },
+        "NSLocalNetworkUsageDescription": "Подключение к Claude Code на вашем компьютере"
+      }
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ]
   }
 }
