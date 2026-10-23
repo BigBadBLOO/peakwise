@@ -11,9 +11,6 @@ import {
   WorkoutDay, Exercise, getDays, createDay, deleteDay, reorderDays,
   getExercises, createSession, exportProgramData, updateProgramPlan, ImportProgram,
 } from '../../db/workout';
-import { useSettings } from '../../context/SettingsContext';
-import { isBridgeConfigured } from '../../services/claude';
-import { generateProgram } from '../../services/programGenerator';
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
@@ -27,7 +24,6 @@ export function ProgramScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
-  const { settings } = useSettings();
 
   const [days, setDays] = useState<WorkoutDay[]>([]);
   const [exerciseCounts, setExerciseCounts] = useState<Record<string, number>>({});
@@ -37,10 +33,6 @@ export function ProgramScreen({ navigation, route }: Props) {
   const [importModalVisible, setImportModalVisible] = useState(false);
   const [importJson, setImportJson] = useState('');
   const [importing, setImporting] = useState(false);
-  const [importSummary, setImportSummary] = useState('');
-  const [genModalVisible, setGenModalVisible] = useState(false);
-  const [wishes, setWishes] = useState('');
-  const [generating, setGenerating] = useState(false);
 
   const load = useCallback(async () => {
     const list = await getDays(programId);
@@ -61,30 +53,6 @@ export function ProgramScreen({ navigation, route }: Props) {
       Alert.alert('Ошибка', 'Не удалось экспортировать программу');
     }
   }, [programId]);
-
-  const openGenerate = useCallback(() => {
-    if (!isBridgeConfigured(settings.bridge)) {
-      Alert.alert('Нужна подписка Claude', 'Подключи мост к Claude Code в настройках.');
-      return;
-    }
-    setGenModalVisible(true);
-  }, [settings.bridge]);
-
-  const handleGenerate = useCallback(async () => {
-    setGenerating(true);
-    try {
-      const data = await exportProgramData(programId);
-      const { program, summary } = await generateProgram(settings.bridge, data, wishes);
-      setImportJson(JSON.stringify(program, null, 2));
-      setImportSummary(summary);
-      setGenModalVisible(false);
-      setImportModalVisible(true);
-    } catch (e: any) {
-      Alert.alert('Ошибка генерации', e.message);
-    } finally {
-      setGenerating(false);
-    }
-  }, [programId, settings.bridge, wishes]);
 
   const handleImportConfirm = useCallback(async () => {
     if (!importJson.trim()) return;
@@ -111,11 +79,8 @@ export function ProgramScreen({ navigation, route }: Props) {
     navigation.setOptions({
       headerRight: () => (
         <View style={{ flexDirection: 'row', gap: 8, marginRight: 4 }}>
-          <TouchableOpacity onPress={openGenerate} style={{ padding: 6 }}>
-            <Icon name="sparkle" size={20} color={colors.mint} />
-          </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => { setImportJson(''); setImportSummary(''); setImportModalVisible(true); }}
+            onPress={() => { setImportJson(''); setImportModalVisible(true); }}
             style={{ padding: 6 }}
           >
             <Icon name="upload" size={20} color={colors.mint} />
@@ -126,7 +91,7 @@ export function ProgramScreen({ navigation, route }: Props) {
         </View>
       ),
     });
-  }, [navigation, colors, handleExport, openGenerate]);
+  }, [navigation, colors, handleExport]);
 
   useEffect(() => {
     load();
@@ -166,7 +131,7 @@ export function ProgramScreen({ navigation, route }: Props) {
 
   const startWorkout = async (day: WorkoutDay) => {
     const session = await createSession(route.params.programId, day.id, day.name);
-    navigation.navigate('ActiveWorkout', { sessionId: session.id, dayId: day.id, dayName: day.name });
+    navigation.navigate('ActiveWorkout', { sessionId: session.id, dayId: day.id, dayName: day.name, programId });
   };
 
   return (
@@ -175,6 +140,22 @@ export function ProgramScreen({ navigation, route }: Props) {
         data={days}
         keyExtractor={d => d.id}
         contentContainerStyle={s.list}
+        ListHeaderComponent={
+          <TouchableOpacity
+            style={s.coachCard}
+            onPress={() => navigation.navigate('ProgramCoach', { programId })}
+            activeOpacity={0.85}
+          >
+            <View style={s.coachIcon}>
+              <Icon name="wand" size={18} color="#fff" strokeWidth={2.2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.coachTitle}>Проанализировать с ИИ-тренером</Text>
+              <Text style={s.coachSub}>Разберёт последние тренировки и подгонит программу на следующую неделю</Text>
+            </View>
+            <Icon name="chevron-right" size={18} color={colors.mint} />
+          </TouchableOpacity>
+        }
         ListEmptyComponent={
           <View style={s.empty}>
             <Icon name="calendar" size={40} color={colors.text4} />
@@ -292,14 +273,7 @@ export function ProgramScreen({ navigation, route }: Props) {
         <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={[s.modal, { paddingBottom: insets.bottom + 20 }]}>
             <Text style={s.modalTitle}>Обновить программу</Text>
-            {importSummary ? (
-              <Text style={s.modalSummary}>{importSummary}</Text>
-            ) : null}
-            <Text style={s.modalHint}>
-              {importSummary
-                ? 'Проверь программу ниже — дни и упражнения заменятся, история сохранится'
-                : 'Вставь JSON от Claude — дни и упражнения заменятся, история сохранится'}
-            </Text>
+            <Text style={s.modalHint}>Вставь JSON от Claude — дни и упражнения заменятся, история сохранится</Text>
             <ScrollView style={s.jsonScroll} keyboardShouldPersistTaps="handled">
               <TextInput
                 style={s.jsonInput}
@@ -330,43 +304,6 @@ export function ProgramScreen({ navigation, route }: Props) {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Сгенерировать программу */}
-      <Modal visible={genModalVisible} transparent animationType="slide">
-        <KeyboardAvoidingView style={s.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={[s.modal, { paddingBottom: insets.bottom + 20 }]}>
-            <Text style={s.modalTitle}>Новая программа от Claude</Text>
-            <Text style={s.modalHint}>
-              Claude проанализирует текущую программу и последние тренировки и предложит обновление
-            </Text>
-            <TextInput
-              style={[s.input, { minHeight: 80, textAlignVertical: 'top' }]}
-              placeholder="Пожелания (необязательно): 3 дня в неделю, больше ног…"
-              placeholderTextColor={colors.text4}
-              value={wishes}
-              onChangeText={setWishes}
-              multiline
-              editable={!generating}
-            />
-            {generating && (
-              <Text style={s.modalHint}>Генерирую… это может занять до минуты</Text>
-            )}
-            <View style={s.modalBtns}>
-              <TouchableOpacity style={s.cancelBtn} onPress={() => setGenModalVisible(false)} disabled={generating}>
-                <Text style={s.cancelText}>Отмена</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.saveBtn, generating && s.saveBtnDisabled]}
-                onPress={handleGenerate}
-                disabled={generating}
-              >
-                {generating
-                  ? <ActivityIndicator color="#fff" size="small" />
-                  : <Text style={s.saveText}>Сгенерировать</Text>}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
     </View>
   );
 }
@@ -374,6 +311,17 @@ export function ProgramScreen({ navigation, route }: Props) {
 const makeStyles = (c: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: c.bg },
   list: { padding: 16, paddingBottom: 100 },
+  coachCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: c.mintSoft, borderRadius: 14, padding: 14, marginBottom: 14,
+    borderWidth: 1, borderColor: c.mint + '55',
+  },
+  coachIcon: {
+    width: 36, height: 36, borderRadius: 10, backgroundColor: c.mint,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  coachTitle: { fontSize: 15, fontWeight: '800', color: c.text },
+  coachSub: { fontSize: 12, color: c.text3, marginTop: 2 },
   empty: { alignItems: 'center', paddingTop: 80, gap: 10 },
   emptyText: { fontSize: 18, fontWeight: '700', color: c.text },
   emptyHint: { fontSize: 14, color: c.text4 },
@@ -420,7 +368,6 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: c.text },
   modalHint: { fontSize: 13, color: c.text3, marginTop: -4 },
-  modalSummary: { fontSize: 13, color: c.text2, lineHeight: 18 },
   inputLabel: { fontSize: 12, fontWeight: '700', color: c.text3, marginBottom: -4 },
   input: {
     backgroundColor: c.inputBg, borderRadius: 12, padding: 14,

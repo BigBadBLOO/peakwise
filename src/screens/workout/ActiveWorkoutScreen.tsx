@@ -24,7 +24,7 @@ interface ExerciseWithSets extends Exercise {
 
 interface Props {
   navigation: any;
-  route: { params: { sessionId: string; dayId: string; dayName: string } };
+  route: { params: { sessionId: string; dayId: string; dayName: string; programId: string } };
 }
 
 // ── Stopwatch state per exercise ────────────────────────────────────────────
@@ -36,7 +36,7 @@ interface SwState {
 }
 
 export function ActiveWorkoutScreen({ navigation, route }: Props) {
-  const { sessionId, dayId, dayName } = route.params;
+  const { sessionId, dayId, dayName, programId } = route.params;
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -266,7 +266,7 @@ export function ActiveWorkoutScreen({ navigation, route }: Props) {
   };
 
   if (sessionDone && doneStats) {
-    return <SessionCompleteScreen stats={doneStats} dayName={dayName} elapsed={globalElapsed} navigation={navigation} colors={colors} s={s} fmtTime={fmtTime} />;
+    return <SessionCompleteScreen stats={doneStats} dayName={dayName} programId={programId} elapsed={globalElapsed} navigation={navigation} colors={colors} s={s} fmtTime={fmtTime} />;
   }
 
   return (
@@ -572,10 +572,11 @@ export function ActiveWorkoutScreen({ navigation, route }: Props) {
 
 // ── Session Complete ────────────────────────────────────────────────────────
 function SessionCompleteScreen({
-  stats, dayName, elapsed, navigation, colors, s, fmtTime,
+  stats, dayName, programId, elapsed, navigation, colors, s, fmtTime,
 }: {
   stats: SessionStats;
   dayName: string;
+  programId: string;
   elapsed: number;
   navigation: any;
   colors: any;
@@ -613,8 +614,16 @@ function SessionCompleteScreen({
           </View>
         )}
 
-        <TouchableOpacity style={s.doneBtn} onPress={() => navigation.popToTop()}>
-          <Text style={s.doneBtnText}>Закрыть</Text>
+        <TouchableOpacity
+          style={[s.doneBtn, s.analyzeBtn]}
+          onPress={() => navigation.replace('ProgramCoach', { programId })}
+        >
+          <Icon name="wand" size={16} color="#fff" strokeWidth={2.4} />
+          <Text style={s.doneBtnText}>Проанализировать и подогнать программу</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={s.doneBtnGhost} onPress={() => navigation.popToTop()}>
+          <Text style={s.doneBtnGhostText}>Закрыть</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -797,5 +806,8 @@ const makeStyles = (c: Colors) => StyleSheet.create({
     backgroundColor: c.mint, borderRadius: 14, padding: 16,
     width: '100%', alignItems: 'center', marginTop: 8,
   },
-  doneBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  doneBtnText: { color: '#fff', fontWeight: '800', fontSize: 15, textAlign: 'center', flexShrink: 1 },
+  analyzeBtn: { flexDirection: 'row', justifyContent: 'center', gap: 8 },
+  doneBtnGhost: { padding: 12, width: '100%', alignItems: 'center' },
+  doneBtnGhostText: { color: c.text3, fontWeight: '700', fontSize: 15 },
 });

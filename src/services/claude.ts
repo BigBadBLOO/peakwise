@@ -65,6 +65,30 @@ export async function claudeChat(
   return String(data.text ?? '');
 }
 
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+// CLI принимает один prompt, поэтому диалог передаётся стенограммой.
+export async function claudeConversation(
+  bridge: BridgeConfig,
+  messages: ChatMessage[],
+  systemPrompt: string,
+  context = '',
+  model: 'haiku' | 'sonnet' | 'opus' = 'sonnet',
+): Promise<string> {
+  const transcript = messages
+    .map(m => `[${m.role === 'user' ? 'Пользователь' : 'Ты'}]\n${m.content}`)
+    .join('\n\n');
+  const prompt = [
+    context,
+    `<диалог>\n${transcript}\n</диалог>`,
+    'Напиши свою следующую реплику — только её текст, без метки [Ты].',
+  ].filter(Boolean).join('\n\n');
+  return claudeChat(bridge, prompt, systemPrompt, model);
+}
+
 export async function checkBridge(bridge: BridgeConfig): Promise<BridgeHealth> {
   try {
     return await request(bridge, '/health?probe=1', {}, 60 * 1000);

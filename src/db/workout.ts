@@ -403,6 +403,7 @@ export interface ExportedExercise {
 
 export interface ExportedDay {
   name: string;
+  weekday: number | null;
   exercises: ExportedExercise[];
 }
 
@@ -443,6 +444,7 @@ export interface ImportProgram {
   description?: string;
   days: Array<{
     name: string;
+    weekday?: number | null;
     exercises: Array<{
       name: string;
       rest_seconds?: number;
@@ -473,7 +475,7 @@ async function buildExportedProgram(prog: Program): Promise<ExportedProgram> {
         })),
       });
     }
-    exportedDays.push({ name: day.name, exercises: exportedExercises });
+    exportedDays.push({ name: day.name, weekday: day.weekday, exercises: exportedExercises });
   }
   return { name: prog.name, description: prog.description, days: exportedDays };
 }
@@ -534,7 +536,7 @@ export async function exportWorkoutData(): Promise<WorkoutExport> {
 export async function importProgram(data: ImportProgram): Promise<Program> {
   const prog = await createProgram(data.name, data.description ?? '');
   for (const dayDef of data.days) {
-    const day = await createDay(prog.id, dayDef.name);
+    const day = await createDay(prog.id, dayDef.name, dayDef.weekday ?? null);
     for (const exDef of dayDef.exercises) {
       const ex = await createExercise(day.id, exDef.name, exDef.rest_seconds ?? 90);
       for (const setDef of exDef.sets) {
@@ -551,7 +553,7 @@ export async function updateProgramPlan(programId: string, data: ImportProgram):
   // Delete existing days (cascades to exercises and planned sets, but NOT sessions)
   await db.runAsync('DELETE FROM workout_days WHERE program_id = ?', programId);
   for (const dayDef of data.days) {
-    const day = await createDay(programId, dayDef.name);
+    const day = await createDay(programId, dayDef.name, dayDef.weekday ?? null);
     for (const exDef of dayDef.exercises) {
       const ex = await createExercise(day.id, exDef.name, exDef.rest_seconds ?? 90);
       for (const setDef of exDef.sets) {

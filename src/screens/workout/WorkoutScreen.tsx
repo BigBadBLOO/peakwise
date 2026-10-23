@@ -16,12 +16,14 @@ import { ProgramScreen } from './ProgramScreen';
 import { DayScreen } from './DayScreen';
 import { ActiveWorkoutScreen } from './ActiveWorkoutScreen';
 import { ExerciseHistoryScreen } from './ExerciseHistoryScreen';
+import { ProgramCoachScreen } from './ProgramCoachScreen';
 
 export type WorkoutParamList = {
   Programs: undefined;
   Program: { programId: string; programName: string };
   Day: { dayId: string; dayName: string; programId: string };
-  ActiveWorkout: { sessionId: string; dayId: string; dayName: string };
+  ActiveWorkout: { sessionId: string; dayId: string; dayName: string; programId: string };
+  ProgramCoach: { programId?: string; programName?: string } | undefined;
   ExerciseHistory: { exerciseName: string };
 };
 
@@ -52,6 +54,11 @@ export function WorkoutScreen() {
         name="ActiveWorkout"
         component={ActiveWorkoutScreen}
         options={{ headerShown: false, gestureEnabled: false }}
+      />
+      <Stack.Screen
+        name="ProgramCoach"
+        component={ProgramCoachScreen}
+        options={({ route }) => ({ title: (route.params as any)?.programId ? 'Анализ тренировок' : 'ИИ-тренер' })}
       />
       <Stack.Screen
         name="ExerciseHistory"
@@ -172,12 +179,20 @@ function ProgramsListScreen({ navigation }: any) {
 
       <View style={s.fab}>
         <TouchableOpacity
-          style={s.fabBtn}
+          style={[s.fabBtn, s.fabBtnSecondary]}
           onPress={() => { setNewName(''); setNewDesc(''); setModalVisible(true); }}
           activeOpacity={0.85}
         >
-          <Icon name="plus" size={18} color="#fff" strokeWidth={2.5} />
-          <Text style={s.fabText}>Новая программа</Text>
+          <Icon name="plus" size={18} color={colors.mint} strokeWidth={2.5} />
+          <Text style={[s.fabText, { color: colors.mint }]}>Вручную</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.fabBtn, { flex: 1.4 }]}
+          onPress={() => navigation.navigate('ProgramCoach')}
+          activeOpacity={0.85}
+        >
+          <Icon name="wand" size={18} color="#fff" strokeWidth={2.5} />
+          <Text style={s.fabText}>С ИИ-тренером</Text>
         </TouchableOpacity>
       </View>
 
@@ -257,8 +272,13 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   cardName: { fontSize: 16, fontWeight: '700', color: c.text },
   cardDesc: { fontSize: 13, color: c.text3, marginTop: 2 },
   cardMeta: { fontSize: 12, color: c.text4, marginTop: 3 },
-  fab: { position: 'absolute', bottom: 20, left: 16, right: 16 },
+  fab: { position: 'absolute', bottom: 20, left: 16, right: 16, flexDirection: 'row', gap: 10 },
+  fabBtnSecondary: {
+    backgroundColor: c.surface, borderWidth: 1.5, borderColor: c.mint,
+    shadowOpacity: 0, elevation: 0,
+  },
   fabBtn: {
+    flex: 1,
     backgroundColor: c.mint, borderRadius: 14, padding: 16,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     shadowColor: c.mint, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 16,
