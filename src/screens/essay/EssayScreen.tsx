@@ -10,7 +10,6 @@ import { Icon } from '../../components/Icon';
 import { claudeChat, isBridgeConfigured } from '../../services/claude';
 import { addXp, ESSAY_XP } from '../../db/stats';
 import { saveEssaySession, getEssaySessions, EssaySession } from '../../db/essays';
-import { useLlama, LlamaStatus } from '../../hooks/useLlama';
 
 type Mode = 'retelling' | 'essay' | 'both';
 
@@ -51,7 +50,6 @@ export function EssayScreen() {
   const { settings } = useSettings();
   const { colors } = useTheme();
   const s = useMemo(() => makeStyles(colors), [colors]);
-  const llama = useLlama();
 
   const [mode, setMode] = useState<Mode>('retelling');
   const [stage, setStage] = useState<Stage>('mode-select');
@@ -82,20 +80,18 @@ export function EssayScreen() {
   useEffect(() => { loadHistory(0, true); }, [loadHistory]);
 
   const checkAI = (): boolean => {
-    if (isBridgeConfigured(settings.bridge) || llama.isReady) return true;
-    Alert.alert('Нужен AI', 'Подключи подписку Claude в настройках или загрузи модель на устройство.');
+    if (isBridgeConfigured(settings.bridge)) return true;
+    Alert.alert('Нужен AI', 'Подключи подписку Claude в настройках.');
     return false;
   };
 
-  const aiGenerate = async (system: string, user: string, maxTokens = 600): Promise<string> => {
-    if (isBridgeConfigured(settings.bridge)) return claudeChat(settings.bridge, user, system);
-    return llama.generate(system, user, maxTokens);
-  };
+  const aiGenerate = (system: string, user: string): Promise<string> =>
+    claudeChat(settings.bridge, user, system);
 
   const aiGenerateText = async (level: number, topicDesc: string): Promise<string> => {
     const user = `Напиши текст для изложения. Уровень сложности: ${level}/5${topicDesc}.\nТекст:`;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const text = await aiGenerate(SYSTEM_GENERATE, user, 700);
+      const text = await aiGenerate(SYSTEM_GENERATE, user);
       if (isValidGeneratedText(text, level)) return text;
     }
     throw new Error('Не удалось сгенерировать текст. Попробуй ещё раз.');
@@ -123,7 +119,6 @@ export function EssayScreen() {
       const result = await aiGenerate(
         SYSTEM_CHECK_RETELLING,
         `Оригинальный текст:\n${sourceText}\n\nИзложение ученика:\n${retellingInput}`,
-        600,
       );
       setFeedback(result);
       setStage('feedback-retelling');
@@ -142,7 +137,7 @@ export function EssayScreen() {
     setLoading(true);
     try {
       const topicDesc = topic !== 'any' ? `, тема: ${TOPICS.find(t => t.id === topic)?.label ?? topic}` : '';
-      const result = await aiGenerate(SYSTEM_ESSAY_TOPIC, `Уровень сложности: ${level}/5${topicDesc}`, 100);
+      const result = await aiGenerate(SYSTEM_ESSAY_TOPIC, `Уровень сложности: ${level}/5${topicDesc}`);
       setEssayTopic(result);
       setStage('writing-essay');
     } catch (e: any) {
@@ -159,7 +154,6 @@ export function EssayScreen() {
       const result = await aiGenerate(
         SYSTEM_CHECK_ESSAY,
         `Тема сочинения: ${essayTopic}\n\nСочинение ученика:\n${essayInput}`,
-        600,
       );
       setFeedback(result);
       setStage('feedback-essay');
@@ -181,7 +175,7 @@ export function EssayScreen() {
 
   const selectMode = (m: Mode) => { setMode(m); setStage('level-select'); };
 
-  const isWorking = loading || llama.status === 'inferring';
+  const isWorking = loading;
 
   // After retelling feedback: go to essay if mode=both, else reset
   const afterRetelling = mode === 'both' ? generateEssayTopic : reset;
@@ -201,8 +195,7 @@ export function EssayScreen() {
             history={history} historyDone={historyDone}
             onLoadMore={() => loadHistory(historyOffset)}
             onHistoryItem={item => { setSelectedSession(item); setStage('history-detail'); }}
-            llamaStatus={llama.status} llamaProgress={llama.progress}
-            llamaError={llama.errorMessage} onDownload={llama.download} onDelete={llama.deleteModel}
+            aiConnected={isBridgeConfigured(settings.bridge)}
             s={s} colors={colors}
           />
         )}
@@ -257,12 +250,11 @@ export function EssayScreen() {
 // ── Mode select ───────────────────────────────────────────────────────────────
 
 function ModeSelect({ onSelect, history, historyDone, onLoadMore, onHistoryItem,
-  llamaStatus, llamaProgress, llamaError, onDownload, onDelete, s, colors }: {
+  aiConnected, s, colors }: {
   onSelect: (m: Mode) => void;
   history: EssaySession[]; historyDone: boolean; onLoadMore: () => void;
   onHistoryItem: (item: EssaySession) => void;
-  llamaStatus: LlamaStatus; llamaProgress: number; llamaError: string | null;
-  onDownload: () => void; onDelete: () => void; s: any; colors: Colors;
+  aiConnected: boolean; s: any; colors: Colors;
 }) {
   return (
     <View>
@@ -279,8 +271,13 @@ function ModeSelect({ onSelect, history, historyDone, onLoadMore, onHistoryItem,
       </LinearGradient>
 
       <View style={s.section}>
-        <ModelBanner status={llamaStatus} progress={llamaProgress}
-          errorMessage={llamaError} onDownload={onDownload} onDelete={onDelete} s={s} colors={colors} />
+        {!aiConnected && (
+          <View style={s.banner}>
+            <Text style={s.bannerText}>
+              Подключи подписку Claude в Настройках → AI Provider, чтобы ИИ готовил задания и проверял ответы
+            </Text>
+          </View>
+        )}
 
         {MODES.map(m => (
           <TouchableOpacity key={m.id} style={s.modeCard} onPress={() => onSelect(m.id)} activeOpacity={0.82}>
@@ -397,70 +394,6 @@ function LevelSelect({ mode, level, topic, onBack, onLevelChange, onTopicChange,
           }
         </TouchableOpacity>
       </View>
-    </View>
-  );
-}
-
-// ── Model banner ──────────────────────────────────────────────────────────────
-
-function ModelBanner({ status, progress, errorMessage, onDownload, onDelete, s, colors }: {
-  status: LlamaStatus; progress: number; errorMessage: string | null;
-  onDownload: () => void; onDelete: () => void; s: any; colors: Colors;
-}) {
-  if (status === 'ready') {
-    return (
-      <View style={s.bannerReady}>
-        <Text style={s.bannerReadyText}>✓ Gemma-2-2B загружена</Text>
-        <TouchableOpacity onPress={onDelete} activeOpacity={0.7}>
-          <Text style={s.bannerDeleteText}>Удалить</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  if (status === 'requires_build') {
-    return (
-      <View style={s.banner}>
-        <Text style={s.bannerText}>Для AI на устройстве нужна нативная сборка (expo run:android)</Text>
-      </View>
-    );
-  }
-
-  if (status === 'downloading') {
-    const pct = Math.round(progress * 100);
-    return (
-      <View style={s.banner}>
-        <View style={s.bannerRow}>
-          <Text style={s.bannerTitle}>Загружаю модель… {pct}%</Text>
-          <Text style={s.bannerSub}>~1.6 ГБ · не закрывай приложение</Text>
-        </View>
-        <View style={s.progressTrack}>
-          <View style={[s.progressFill, { width: `${pct}%` as any }]} />
-        </View>
-      </View>
-    );
-  }
-
-  if (status === 'loading_model') {
-    return (
-      <View style={s.banner}>
-        <ActivityIndicator size="small" color={colors.mint} />
-        <Text style={s.bannerTitle}>Загружаю модель в память…</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={s.bannerDownload}>
-      <View style={s.bannerDownloadInfo}>
-        <Text style={s.bannerTitle}>AI на устройстве</Text>
-        <Text style={s.bannerSub}>Gemma-2-2B · ~1.6 ГБ · бесплатно</Text>
-        {errorMessage && <Text style={s.bannerError}>{errorMessage}</Text>}
-      </View>
-      <TouchableOpacity style={s.bannerBtn} onPress={onDownload} activeOpacity={0.85}>
-        <Icon name="arrow-down" size={14} color="#fff" />
-        <Text style={s.bannerBtnText}>{status === 'error' ? 'Повтор' : 'Скачать'}</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -648,37 +581,13 @@ const makeStyles = (c: Colors) => StyleSheet.create({
   feedbackText: { color: c.successText, fontSize: 15, lineHeight: 24 },
   center: { alignItems: 'center', paddingVertical: 60, gap: 16 },
   loadingText: { color: c.text3, fontSize: 16 },
-  // Model banner
+  // AI banner
   banner: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: c.surface, borderRadius: 12, padding: 12,
     borderWidth: 1, borderColor: c.border, marginBottom: 20,
   },
-  bannerRow: { flex: 1 },
-  bannerTitle: { fontSize: 13, fontWeight: '700', color: c.text },
-  bannerSub: { fontSize: 11, color: c.text4, marginTop: 2 },
   bannerText: { flex: 1, fontSize: 12, color: c.text4, lineHeight: 16 },
-  bannerError: { fontSize: 11, color: c.rateForgot ?? '#E0455A', marginTop: 3 },
-  bannerDownload: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: c.mintSoft, borderRadius: 12, padding: 12,
-    borderWidth: 1, borderColor: c.mint + '40', marginBottom: 20,
-  },
-  bannerDownloadInfo: { flex: 1, marginRight: 12 },
-  bannerBtn: {
-    backgroundColor: c.mint, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9,
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-  },
-  bannerBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  progressTrack: { height: 4, backgroundColor: c.border, borderRadius: 2, marginTop: 8, overflow: 'hidden' },
-  progressFill: { height: 4, backgroundColor: c.mint, borderRadius: 2 },
-  bannerReady: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: c.surface, borderRadius: 12, padding: 12,
-    borderWidth: 1, borderColor: c.border, marginBottom: 20,
-  },
-  bannerReadyText: { fontSize: 13, color: c.text3 },
-  bannerDeleteText: { fontSize: 13, color: c.rateForgot ?? '#E0455A', fontWeight: '600' },
   // History
   historyCard: { backgroundColor: c.surface2, borderRadius: 14, padding: 14, marginBottom: 10 },
   historyCardHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },

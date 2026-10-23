@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import * as FileSystem from 'expo-file-system/legacy';
 import { BridgeConfig } from '../services/claude';
 
 export type ModuleId = 'essay' | 'flashcards' | 'workout' | 'habits';
@@ -38,6 +39,7 @@ const MODULES_KEY = 'settings:modules';
 const BRIDGE_URL_KEY = 'settings:bridgeUrl';
 const BRIDGE_TOKEN_SECURE_KEY = 'claude_bridge_token';
 const LEGACY_API_KEY_SECURE_KEY = 'claude_api_key';
+const LEGACY_MODEL_FILE = 'peakwise_model.gguf';
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<Settings>({
@@ -56,6 +58,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         ]);
         // API-ключ больше не используется — ИИ работает по подписке через мост
         SecureStore.deleteItemAsync(LEGACY_API_KEY_SECURE_KEY).catch(() => {});
+        // Локальная Gemma тоже больше не нужна — освобождаем ~1.6 ГБ
+        FileSystem.deleteAsync(FileSystem.documentDirectory + LEGACY_MODEL_FILE, { idempotent: true }).catch(() => {});
 
         let modules: ModuleConfig[] = storedModules ? JSON.parse(storedModules) : DEFAULT_MODULES;
         // Ensure any new default modules are added when user upgrades
